@@ -35,7 +35,7 @@ Therefore there will only be one auto_uav which is built into the uam_env
 #! End 
 
 
-class Uam_Uav_Env(gym.Env):
+class UAMSimEnv(gym.Env):
     metadata = {"render_mode":["human", "rgb_array"], "render_fps":4}
 
     def __init__(self, location_name, num_vertiport, num_reg_uav,sleep_time = 0.005, render_mode=None):
