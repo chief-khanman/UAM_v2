@@ -5,7 +5,7 @@ from simulator_basic import Simulator_basic
 from matplotlib.animation import FuncAnimation
 import geopandas as gpd
 from utils import static_plot
-from das import Collision_controller, Zero_controller
+from uam_sim.cas import CollisionController, ZeroController
 
  
 #! - Complete the following checks 
@@ -20,7 +20,7 @@ from das import Collision_controller, Zero_controller
 if __name__ == '__main__':
     
     #controller = Zero_controller()
-    controller = Collision_controller()
+    controller = CollisionController()
     controller_predict = controller.get_action
     
     sim = Simulator_basic('Austin, Texas, USA', 20, 18,sleep_time=0, total_timestep=10000)

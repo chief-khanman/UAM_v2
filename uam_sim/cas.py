@@ -1,4 +1,4 @@
-# Detection and avoidance system DAS 
+# Collision Avoidance System (CAS) module
 
 from geopandas import GeoSeries
 import numpy as np 
@@ -20,7 +20,7 @@ All controller's method -> get_action(state) : should accept state
                                     
 
 '''
-class Collision_controller:
+class CollisionController:
     '''
     Controllers are defined for individualy UAVs, 
     A controller will be used for a certain type of UAV, 
@@ -122,7 +122,7 @@ class Collision_controller:
     
 
 
-class Zero_controller:
+class ZeroController:
     '''
     Controllers are defined for individualy UAVs, 
     A controller will be used for a certain type of UAV, 

@@ -26,12 +26,12 @@ from vertiport import Vertiport
 from uav import UAV
 from uav_basic import UAV_Basic
 from autonomous_uav import Autonomous_UAV
-from das import Collision_controller
+from uam_sim.cas import CollisionController
 import copy
 #from autonomous_uav import Autonomous_UAV
 
 
-class ATC:
+class AirTrafficController:
 
     def __init__(self, airspace:Airspace, ):
         '''ATC (Air Traffic Controller) - maintains information on UAVs and Vertiports.
