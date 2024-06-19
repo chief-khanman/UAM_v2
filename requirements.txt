@@ -1,0 +1,9 @@
+geopandas==0.14.4
+gym==0.26.2
+gymnasium==0.29.1
+matplotlib==3.9.0
+numpy==2.0.0
+osmnx==1.9.3
+setuptools==70.0.0
+Shapely==2.0.4
+stable_baselines3==2.3.2
