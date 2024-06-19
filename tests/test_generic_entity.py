@@ -1,5 +1,5 @@
 import unittest
-from your_package_name.generic_entity import GenericEntity
+from uam_sim.generic_entity import GenericEntity
 
 
 class TestGenericEntity(unittest.TestCase):
