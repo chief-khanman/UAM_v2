@@ -31,7 +31,7 @@ import copy
 #from autonomous_uav import Autonomous_UAV
 
 
-class AirTrafficController:
+class ATC:
 
     def __init__(self, airspace:Airspace, ):
         '''ATC (Air Traffic Controller) - maintains information on UAVs and Vertiports.
