@@ -102,6 +102,7 @@ class MapSensor(SensorTemplate):
                 uav.current_position.buffer(uav.nmac_radius)
             ):
                 nmac_list.append(uav)
+                self_uav.nmac_count += 1
                 
         if len(nmac_list) > 0:
             return True, nmac_list

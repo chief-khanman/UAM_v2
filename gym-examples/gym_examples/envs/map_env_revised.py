@@ -229,12 +229,12 @@ class MapEnv(gym.Env):
                 is_nmac, nmac_list = uav.sensor.get_nmac(uav)
                 if is_nmac:
                     # Logic for NMAC count
-                    #TODO: each UAV instance should have this counter - so that end episode statistic will show NMAC for each UAV 
                     self.total_nmac_count += 1
                     # print(f"--- UAV {uav.id} NMAC ---")
                     # print(f"NMAC detected with {[other_uav.id for other_uav in nmac_list]}\n")
                     # Log NMAC event with all IDs involved
                     nmac_ids = [uav.id] + [other_uav.id for other_uav in nmac_list]
+                    #TODO: update record_nmac -> logger will add how many NMACs did UAV have 
                     self.logger.record_nmac(nmac_ids, self.current_time_step)
                 
                 is_collision, collision_uav_ids = uav.sensor.get_uav_collision(uav)
@@ -1025,7 +1025,8 @@ class MapEnv(gym.Env):
             self.uav_post_flight_info[uav.id] = {
                                           'distance_factor': uav.odometer_reading/uav.start.distance(uav.end), #TODO: what if this metric was multiplied with percentage mission_completion
                                           #'time_factor': time_traveled/self.uav_post_fligt_info[uav.id]['distance']/uav.max_speed,
-                                          'NMAC_count': self.total_nmac_count,  # this is total nmac incidence during episode, ie for all UAVs, might need to change it to individual UAV
+                                          'NMAC_count': uav.nmac_count,
+                                          'TOTAL_NMAC_count': self.total_nmac_count,  # this is total nmac incidence during episode, ie for all UAVs, might need to change it to individual UAV
                                           'RA_violation_count': self.total_collision_count,
                                           'mission_complete': uav.mission_complete_status} # this is total RA collision incidence during episode, ie for all UAVs, might need to change it to individual UAV
 

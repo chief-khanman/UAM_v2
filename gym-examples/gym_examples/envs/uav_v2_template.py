@@ -55,6 +55,7 @@ class UAV_v2_template(ABC):
         self.max_acceleration = 1 # Passed to DynamicsPointMass for action renormalization
         self.max_heading_change = math.pi # Passed to DynamicsPointMass for action renormalization
         self.rotor_speed = 1 #! this is temp value, we need to find a way to calculate and update this method
+        self.nmac_count = 0
 
     @abstractmethod
     def assign_start_end(self, start: Point, end: Point):

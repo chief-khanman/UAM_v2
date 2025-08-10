@@ -385,7 +385,7 @@ if __name__ == "__main__":
         number_orca_agents= 1,
         number_of_vp=5,
         episodes=1,
-        max_steps_per_episode=6,
+        max_steps_per_episode=5000,
         render=False,
         save_animation=False,
         env_seed=env_seed,

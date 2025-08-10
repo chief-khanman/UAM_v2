@@ -44,7 +44,7 @@ class SensorTemplate(ABC):
         pass 
    
     @abstractmethod
-    def get_nmac(self):
+    def get_nmac(self) -> Tuple[bool, List]:
         '''Collect the time step and UAVs with who there was an NMAC'''
         pass
     
