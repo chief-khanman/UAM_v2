@@ -355,7 +355,8 @@ class MapEnv(gym.Env):
         if self.create_uavs_at_random_timestep:    
             #### ADDING UAVS at timesteps ####
             # if self.current_time_step != 0 and self.current_time_step % self.make_uav_at_timestep == 0:
-            if self.current_time_step != 0 and self.current_time_step % random.randint(2,10) == 0:
+            #!                                                           one way of randomizing the times of UAV creation
+            if self.current_time_step != 0 and self.current_time_step % (random.randint(1,10) * 100) == 0:
                 for vertiport in self.atc.vertiport_list:
                     start = vertiport
                     end = random.sample(
