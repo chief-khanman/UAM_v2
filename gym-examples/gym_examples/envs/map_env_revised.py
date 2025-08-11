@@ -4,6 +4,7 @@ import numpy as np
 import time
 import pandas as pd
 import geopandas as gpd
+from typing import Tuple
 
 from uav_v2 import UAV_v2
 from auto_uav_v2 import Auto_UAV_v2
@@ -15,6 +16,7 @@ from dynamics_point_mass import PointMassDynamics
 from map_sensor import MapSensor
 from atc import ATC
 from airspace import Airspace
+from vertiport import Vertiport
 from utils_data_transform import transform_sensor_data, choose_obs_space_constructor, transform_for_uam
 from mapped_env_util import *
 
@@ -60,7 +62,8 @@ class MapEnv(gym.Env):
         render_mode=None,
         max_uavs=8, # this is maximum number of UAVs allowed in env
         max_vertiports=12, # this is maximum number of vertiports allowed in env
-        make_uav_at_timestep = 300,
+        create_uavs_at_random_timestep = True,
+        make_uav_at_timestep = 300, #! this argument will become redundant 
         vp_design_problem = False
     ):  
         super().__init__()
@@ -68,6 +71,8 @@ class MapEnv(gym.Env):
         # ORCA config
         self.num_ORCA_uav = num_ORCA_uav
         
+        # UAV creation at random timestep
+        self.create_uavs_at_random_timestep = create_uavs_at_random_timestep
         
         # Environment configuration
         self.number_of_uav = number_of_uav
@@ -346,68 +351,61 @@ class MapEnv(gym.Env):
                 closest_ra = sorted(ra_data_list, key=lambda x: x['distance'])[0]
                 info['distance_to_restricted'] = closest_ra['distance']
         
-        #### ADDING UAVS at timesteps ####
-        if self.current_time_step != 0 and self.current_time_step % self.make_uav_at_timestep == 0:
-            for vertiport in self.atc.vertiport_list:
-                start = vertiport
-                end = random.sample(
-                    list(filter(lambda x: x is not start, self.atc.vertiport_list)),
-                    k=1)[0]
-                
-                # print(start, end)
 
-                # TODO: add the ORCA agent properly -
-                # since its getting added in the middle of the simulation,
-                # the ORCA agent needs to be part of RVO2 
-                # an agent needs to be created in RVO2
-                # added to RVO2 list
-                # and then stepped in RVO2 sim
-                # and all other tasks related to RVO2 
-                # then it needs to be cleared from the env properly -
-                # deleted from env when mission complets 
-                # deleter from RVO2 when mission completes  
-                # collect num ORCA agents
-                new_uav = UAV_v2(self.orca_controller, 
-                                 self.orca_dynamics, 
-                                 self.map_sensor, 
-                                 radius=self.uav_radius, 
-                                 nmac_radius=self.NMAC_radius,
-                                 detection_radius=self.detection_radius) 
-                #ATC needs to know about these agents - change this style of open addition
-                self.ORCA_agent_list += [new_uav]
-                self.atc.uav_list += [new_uav]
-                
-                
+        if self.create_uavs_at_random_timestep:    
+            #### ADDING UAVS at timesteps ####
+            # if self.current_time_step != 0 and self.current_time_step % self.make_uav_at_timestep == 0:
+            if self.current_time_step != 0 and self.current_time_step % random.randint(2,10) == 0:
+                for vertiport in self.atc.vertiport_list:
+                    start = vertiport
+                    end = random.sample(
+                        list(filter(lambda x: x is not start, self.atc.vertiport_list)),
+                        k=1)[0]
+                    
+                    # print(start, end)
 
-                # Assign to UAV
-                self.atc.assign_vertiport_uav(
-                    new_uav, 
-                    start, 
-                    end
-                )
+                    # TODO: check if the ORCA agent is added properly -
+                    # since its getting added in the middle of the simulation,
+                    # the ORCA agent needs to be part of RVO2 
+                    # an agent needs to be created in RVO2
+                    # added to RVO2 list
+                    # and then stepped in RVO2 sim
+                    # and all other tasks related to RVO2 
+                    # then it needs to be cleared from the env properly -
+                    # deleted from env when mission complets 
+                    # deleter from RVO2 when mission completes  
+                    # collect num ORCA agents
+                    new_uav = UAV_v2(self.orca_controller, 
+                                    self.orca_dynamics, 
+                                    self.map_sensor, 
+                                    radius=self.uav_radius, 
+                                    nmac_radius=self.NMAC_radius,
+                                    detection_radius=self.detection_radius) 
+                    #ATC needs to know about these agents - change this style of open addition
+                    self.ORCA_agent_list += [new_uav]
+                    self.atc.uav_list += [new_uav]
+                    
+                    
+                    
+                    # Assign to UAV
+                    self.atc.assign_vertiport_uav(
+                        new_uav, 
+                        start, 
+                        end
+                    )
 
-                new_uav.reset_odometer()
+                    new_uav.reset_odometer()
 
-                # add new_uav to RVO2 sim
-                self.rvo2_sim.addAgent(new_agent=new_uav)
-
-                #TODO: add to rendering
-
-
-
+                    # add new_uav to RVO2 sim
+                    self.rvo2_sim.addAgent(new_agent=new_uav)
 
 
-
-
-
-
-        #### ADDING UAVS at timesteps ####
+            #### ADDING UAVS at timesteps ####
         
         # Increment time step
         self.current_time_step += 1
         # FYI: unless there is a collision with static or dynamic object, 
         #      obs = self._get_obs()
-        #!DEBUG print statement
         # print('from env.step() - Observation:')
         # print(obs)
         return obs, reward, terminated, truncated, info
@@ -1030,10 +1028,90 @@ class MapEnv(gym.Env):
                                           'RA_violation_count': self.total_collision_count,
                                           'mission_complete': uav.mission_complete_status} # this is total RA collision incidence during episode, ie for all UAVs, might need to change it to individual UAV
 
+        return None
+    
+    
+    # START - General UAV creation method during step()
+    #TODO: in step(), remove the control flow and UAV build logic and replace with general methods below
+    # start vertiport
+    # end vertiport
+    # UAV_v2 (controller, dynamics, sensor, radius, nmac, detection)
+    
+    # Depending on controller
+    #   agent_list - ORCA_agent_list
+    # atc.uav_list
+    # atc.assign_vertiport_uav()
+    # new_uav.reset_odometer 
+    def _add_uav(self, uav_str:str, start:Vertiport, end:Vertiport) -> None:
+        '''From the following list - 
+        simple, 
+        ORCA,
+        [future categories of UAV]  use the string to create a UAV '''
+        if uav_str == 'simple':
+            raise NotImplementedError('The following case has not been implemented yet')
+        elif uav_str == 'ORCA':
+            #! for loop - will create a UAV at each vertiport in simulation airspace 
+            for vertiport in self.atc.vertiport_list:
+                start = vertiport
+                end = random.sample(
+                    list(filter(lambda x: x is not start, self.atc.vertiport_list)),
+                    k=1)[0]
+                
+                # print(start, end)
 
+                # TODO: check if the ORCA agent is added properly -
+                # since its getting added in the middle of the simulation,
+                # the ORCA agent needs to be part of RVO2 
+                # an agent needs to be created in RVO2
+                # added to RVO2 list
+                # and then stepped in RVO2 sim
+                # and all other tasks related to RVO2 
+                # then it needs to be cleared from the env properly -
+                # deleted from env when mission complets 
+                # deleter from RVO2 when mission completes  
+                # collect num ORCA agents
+                new_uav = UAV_v2(self.orca_controller, 
+                                 self.orca_dynamics, 
+                                 self.map_sensor, 
+                                 radius=self.uav_radius, 
+                                 nmac_radius=self.NMAC_radius,
+                                 detection_radius=self.detection_radius) 
+                #ATC needs to know about these agents - change this style of open addition
+                self.ORCA_agent_list += [new_uav]
+                self.atc.uav_list += [new_uav]
+                
+                
 
+                # Assign to UAV
+                self.atc.assign_vertiport_uav(
+                    new_uav, 
+                    start, 
+                    end
+                )
 
+                new_uav.reset_odometer()
+
+                # add new_uav to RVO2 sim
+                self.rvo2_sim.addAgent(new_agent=new_uav)
+                print('New ORCA agent has been added to simulation')
+
+        else:
+            raise RuntimeError('Incorrect uav str for uav creation')
+        pass
+
+    
+    def _get_start_end_vertiport(self,) -> Tuple[Vertiport]:
+        '''Provide a start and end vertiport for UAVs'''
+        # access a vertiport - 
+        # check its queue 
+        # if queue not full add to possible_start_vertiport_list 
+        # from possible_start_vertiport_list randomly select one vertiport as start vertiport 
+        # randomly choose end vertiport 
+        start = None
+        end = None
+        return start, end
         
+    # END   - General UAV creation method during step()
     
     
     
