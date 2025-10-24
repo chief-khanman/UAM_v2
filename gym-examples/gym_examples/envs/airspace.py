@@ -34,6 +34,10 @@ class Airspace: #                                                               
             location_utm_hospital ( ox_projection): location of hospital converted to UTM
             location_utm_hospital_buffer (UTM): buffer around the hospital
         """
+        self.vertiport_tags = {}
+        self.vertiport_feat = {}
+        self.vertiport_utm = {}
+
         self.location_name = location_name  #'Austin, Texas, USA'
         self.buffer_radius = buffer_radius
         self.airspace_tag_list = airspace_tag_list
@@ -45,10 +49,7 @@ class Airspace: #                                                               
         self.location_utm_gdf["boundary"] = (self.location_utm_gdf.boundary)  # adding column 'boundary'
         
         if self.vertiport_tag_list:
-            #Vertiport tag list
-            self.vertiport_tags = {}
-            self.vertiport_feat = {}
-            self.vertiport_utm = {} #this is a dict of GDF
+            # Populate the dictionaries if tags were provided
             #                                                           tag     ,  tag_value
             #                          vertiport_tag_list: List[Tuple('building', 'commercial'), ... , ... , ... ]
             for tag, tag_value in self.vertiport_tag_list:

@@ -381,16 +381,16 @@ if __name__ == "__main__":
     
     # Increase to 500 steps to see more movement
     test_map_env_with_random_actions(
-        number_uav= 5,
-        number_orca_agents= 1,
-        number_of_vp=10,
+        number_uav= 3, # 3
+        number_orca_agents= 1, # 1
+        number_of_vp=5, # 5
         episodes=1,
-        max_steps_per_episode=750,
-        render=True,
-        save_animation=False,
+        max_steps_per_episode=1200,
+        render="human",
+        save_animation=True,
         env_seed=env_seed,
         episode_seeds=episode_seeds,
-        mp4_only=False  # Set to True to only save MP4 files
+        mp4_only=True  # Set to True to only save MP4 files
     )
     
     print("Test script completed.")

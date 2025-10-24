@@ -368,5 +368,12 @@ if __name__ == "__main__":
     # REMEMBER
     # total_timesteps - number of total env.step() called during training 
     # max_episode_steps - number of steps after which env will call env.reset()
-    # max_episode_steps - preferably should be multiple/fraction of n_steps 
+    # max_episode_steps - preferably should be multiple/fraction of n_steps, 1024 * 6 (double 1024 * 3 recommended)
+
+    # Training and inference
     main(total_timesteps=1_000_000, max_episode_steps=1024*3, seed=42)
+
+    # Inference
+    # model_path = "" # Change to saved model path
+    # if model_path and os.path.exists(model_path):
+    #     create_animation(model_path, seed=2, max_steps=1024*3)

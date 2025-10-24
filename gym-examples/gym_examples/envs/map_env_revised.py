@@ -287,6 +287,32 @@ class MapEnv(gym.Env):
         
         self.rvo2_sim.step()
 
+        # Sync RVO2 state back to UAV objects for rendering
+        for orca_agent_id_str, rvo2_agent_number in self.rvo2_sim.orca_agent_id_2_RVO2_number.items():
+            # Get the mapped UAV object
+            uav = self.rvo2_sim.orca_agent_id_to_mapped_agent_obj[orca_agent_id_str]
+            
+            # Get actual velocity from RVO2 simulator (after collision avoidance)
+            velocity = self.rvo2_sim.rvo2_sim.getAgentVelocity(rvo2_agent_number)
+            
+            # Calculate speed from velocity components
+            vx, vy = velocity
+            speed = math.sqrt(vx**2 + vy**2)
+            
+            # Calculate heading from velocity
+            if speed > 0.01:  # Avoid division by zero for stationary agents
+                heading = math.atan2(vy, vx)
+            else:
+                heading = uav.current_heading  # Keep previous heading if stationary
+            
+            # Update UAV attributes for rendering
+            uav.current_speed = speed
+            uav.current_heading = heading
+            
+            # Position is already updated in rvo2_sim.step(), but update final_heading
+            uav.final_heading = math.atan2(uav.end.y - uav.current_position.y,
+                                            uav.end.x - uav.current_position.x)
+
         #### END - UAV ORCA (non-learning) ####
         
         
@@ -804,17 +830,24 @@ class MapEnv(gym.Env):
         # Create vertiports
         num_vertiports = min(self.max_vertiports, self.number_of_vertiport)  # Use a reasonable number
         
-        if not self.vp_design_problem:
-            #* create vertiport OPTION 1
-            # self.airspace.create_n_random_vertiports(num_vertiports, seed=self._seed)
-            # print('Vertiports in atc-airspace: ',self.atc.vertiport_list)
-            # print('Vertiports in airspace: ', self.airspace.vertiport_list)
+        # if not self.vp_design_problem:
+        #     #* create vertiport OPTION 1
+        #     # self.airspace.create_n_random_vertiports(num_vertiports, seed=self._seed)
+        #     # print('Vertiports in atc-airspace: ',self.atc.vertiport_list)
+        #     # print('Vertiports in airspace: ', self.airspace.vertiport_list)
             
-            #* create vertiport OPTION 2
-            self.airspace.create_vertiports_from_regions(self.vertiport_tag_str, self.num_vertiport_region, self.n_sample_from_region)
-            # print('Vertiports in atc-airspace: ',self.atc.vertiport_list)
-            # print('Vertiports in airspace: ', self.airspace.vertiport_list)
-            # time.sleep(10)
+        #     #* create vertiport OPTION 2
+        #     self.airspace.create_vertiports_from_regions(self.vertiport_tag_str, self.num_vertiport_region, self.n_sample_from_region)
+        #     # print('Vertiports in atc-airspace: ',self.atc.vertiport_list)
+        #     # print('Vertiports in airspace: ', self.airspace.vertiport_list)
+        #     # time.sleep(10)
+
+        if not self.vp_design_problem:
+            if self.vertiport_tag_list:  # Only use regions if tags provided
+                self.airspace.create_vertiports_from_regions(self.vertiport_tag_str, self.num_vertiport_region, self.n_sample_from_region)
+            else:  # Fall back to random placement
+                num_vertiports = min(self.max_vertiports, self.number_of_vertiport)
+                self.airspace.create_n_random_vertiports(num_vertiports, seed=self._seed)
         else: 
             print('MapEnv is set for Vertiport Design Problem')
             print(f'from map_env_revised.reset() -> Vertiport List: {self.airspace.vertiport_list}')
