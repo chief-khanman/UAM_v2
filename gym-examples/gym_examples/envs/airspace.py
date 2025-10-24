@@ -86,7 +86,7 @@ class Airspace: #                                                               
         self.number_of_vertiports = number_of_vertiports
         self.vertiport_list:List = []
         self.max_vertiports = max_vertiports 
-        self.polygon_dict = {}
+        self.vertiport_site_polygon_dict = {}
 
     def __repr__(self) -> str:
         return "Airspace({location_name})".format(location_name=self.location_name)
@@ -133,6 +133,7 @@ class Airspace: #                                                               
         return self.vertiport_list
 
 
+
     def create_vertiport_at_location(self, position:Tuple)-> None:
         """Create a vertiport at position(x,y)."""
         position = Point(position[0], position[1])
@@ -162,7 +163,7 @@ class Airspace: #                                                               
     
 
 
-    def create_vertiport_from_polygon(self,polygon:shapely.Polygon) -> Vertiport:
+    def create_vertiport_from_site_polygon(self,polygon:shapely.Polygon) -> Vertiport:
         '''Given a polygon, find the centeroid of the polygon, 
         and place a vertiport at that polygon'''
         
@@ -170,16 +171,16 @@ class Airspace: #                                                               
         return Vertiport(poly_centeroid)
         
 
-    def create_vertiports_from_polygons(self,polygon_list:List[shapely.Polygon]) -> List[Vertiport]:
+    def create_all_vertiports_from_site_polygons(self,polygon_list:List[shapely.Polygon]) -> List[Vertiport]:
         '''Use polygons from polygon_list to create vertiports at each polygon'''
         
         vertiport_list = []
         for polygon in polygon_list:
-            vertiport_list.append(self.create_vertiport_from_polygon(polygon))
+            vertiport_list.append(self.create_vertiport_from_site_polygon(polygon))
         return vertiport_list
         
 
-    def make_polygon_dict(self, tag_str):
+    def make_vertiport_site_polygon_dict(self, tag_str):
         #TODO: check if tag_str in tag_list
         # if True, then use tag_str as key for dict
         
@@ -190,19 +191,21 @@ class Airspace: #                                                               
         try:
             assert tag_str in self.vertiport_tags.keys()
         except:
-            raise AssertionError('airspace - make_polygon_dict() is not using correct tag_str')
+            raise AssertionError('airspace - make_vertiport_site_polygon_dict() is not using correct tag_str')
         
-        self.polygon_dict[tag_str] = [obj for obj in self.vertiport_utm[tag_str].geometry if isinstance(obj, shapely.Polygon)]
+        self.vertiport_site_polygon_dict[tag_str] = [obj for obj in self.vertiport_utm[tag_str].geometry if isinstance(obj, shapely.Polygon)]
 
         return None
     
 
+
     def assign_region_to_vertiports(self, vertiport_list:List[Vertiport], num_regions) -> List[Vertiport]:
-        #TODO: this needs to be an internal method 
-        
         '''Assign regions to each vertioport from vertiport list. '''
 
         location_tuple = [(vertiport.x, vertiport.y) for vertiport in vertiport_list]
+        
+        #! region build process needs to be separated 
+        # region build process - 
         #           n_clusters needs to be a variable 
         kmeans = KM(n_clusters=num_regions, random_state=0, n_init="auto").fit(location_tuple)
         
@@ -217,7 +220,7 @@ class Airspace: #                                                               
         return vertiport_list
 
 
-
+    #! This method is used to build self.regions_dict
     def assign_vertiports_to_regions(self, vertiport_list:List[Vertiport], num_regions:int) -> Dict:
 
         region_vertiport_dict = {}
@@ -290,20 +293,21 @@ class Airspace: #                                                               
         print(f"Created {len(self.vertiport_list)} vertiports with seed {seed}")
 
     # VERTIPORT CREATION - OPTION 2
+    # NOT used for VP design problem 
     def create_vertiports_from_regions(self, tag_str, num_regions, n_sample_from_region):
         '''create vertiports and update vertiport_list by adding,
             n_sample_from_region vertiports to vertiport_list'''
         
         #TODO: place a check
-        # check if self.polygon_dict is an attribute if not DO SOMETHING -- ??
+        # check if self.vertiport_site_polygon_dict is an attribute if not DO SOMETHING -- ??
         try: 
-            assert hasattr(self, 'polygon_dict')
+            assert hasattr(self, 'vertiport_site_polygon_dict')
         except:
-            AttributeError("Missing polygon_dict, __init__'s vertiport_tag_list is empty")
+            AttributeError("Missing vertiport_site_polygon_dict, __init__'s vertiport_tag_list is empty")
         #step 1 - makes self.poly_dict
-        self.make_polygon_dict(tag_str)
+        self.make_vertiport_site_polygon_dict(tag_str)
         #step 2
-        vertiport_list = self.create_vertiports_from_polygons(self.polygon_dict[tag_str])
+        vertiport_list = self.create_all_vertiports_from_site_polygons(self.vertiport_site_polygon_dict[tag_str])
         
         
         #step 3
@@ -320,18 +324,73 @@ class Airspace: #                                                               
         return None
     
 
-    def make_regions_dict(self, tag_str, num_regions):
+
+
+    # 1. Make sure vertiports are present in vertiport list 
+
+
+
+
+
+    # 2. Write a method for region builder 
+    #       use map and subdivide into number of regions
+    #       how to take a map polygon and divide using a primitive shape like rectangle or hexagon 
+
+
+
+    # 3. combine the above in assign_region_to_vertiports method
+    #       have a special case for K-Means since it does not divide the map area into regions rather uses vertiport locations 
+
+
+    #! CHANGE: 
+    # 1. use vertiports_list and regions_list 
+    # 2. provide mapping_criteria - map vertiport to region 
+
+    def build_pattern(self, center:Tuple[float], diag_dist:float):
+        """make verticies of square from center at sqrt2 dist"""
+        loc_list:List[Tuple[float,float]] = []
+        for n in range(4):
+            _loc_x, _loc_y = math.ceil(center[0] + diag_dist*math.cos(math.pi/2*n + math.pi/4)), math.ceil(center[1] + diag_dist*math.sin(math.pi/2*n + math.pi/4))
+            loc_list.append((float(_loc_x), float(_loc_y)))
+        return loc_list
+
+    def make_regions_dict_vp_des_test_mode(self) -> None:
+        '''In test_mode from a given center location we are making 4 regions at the vertices of square centered at point. 
+        With each vertex as new center of region we are making four vertiports around that center again. 
+        This gives us 4 regions with 4 vertiports each in each region. '''
+        self.regions_dict = {}
+        centeroid = self.location_utm_gdf.centroid
+        center = (centeroid.x, centeroid.y)
+        region_center_list = self.build_pattern(center, 5000)
+        region = 0
+        for region_center in region_center_list:
+            _vertiport_list = []
+            vertiport_centers_list = self.build_pattern(region_center, 300)
+            for vertiport_center in vertiport_centers_list:
+                _vp = Vertiport(Point(vertiport_center[0], vertiport_center[1]))
+                _vp.region = region
+                _vertiport_list.append(_vp)
+            self.regions_dict[region] = _vertiport_list
+            region += 1
+        
+        self.num_regions = len(self.regions_dict.keys())
+           
+
+
+        pass 
+    #! ** this method will be removed and replaced with new method **
+    def make_regions_dict_vp_des(self, tag_str, num_regions):
         '''Using tag_str, and num_region, make an airspace dict attribute that hold regions and vertiports'''
         #TODO: place a check
-        # check if self.polygon_dict is an attribute if not DO SOMETHING -- ??
+        # check if self.vertiport_site_polygon_dict is an attribute if not DO SOMETHING -- ??
         try: 
-            assert hasattr(self, 'polygon_dict')
+            assert hasattr(self, 'vertiport_site_polygon_dict')
         except:
-            AttributeError("Missing polygon_dict, __init__'s vertiport_tag_list is empty")
+            AttributeError("Missing vertiport_site_polygon_dict, __init__'s vertiport_tag_list is empty")
         #step 1 - makes self.poly_dict
-        self.make_polygon_dict(tag_str)
+        self.make_vertiport_site_polygon_dict(tag_str)
         #step 2
-        vertiport_list = self.create_vertiports_from_polygons(self.polygon_dict[tag_str])
+        vertiport_list = self.create_all_vertiports_from_site_polygons(self.vertiport_site_polygon_dict[tag_str])
         
         
         #step 3
@@ -351,18 +410,22 @@ class Airspace: #                                                               
     
 
 
-    def fill_vertiport_from_region(self, partial_vertiport_list):
+    def random_fill_remaining_vertiport_slots(self, partial_vertiport_list):
+        """Fill remaining spots in the vertiport list 
+        with random vertiports selected from remaining regions
+        and return a complete vertiport list"""
         # find how many regions there are for this env
         required_vertiports = self.num_regions
         # determine how many vertiports need to be collected 
         region_index_for_sampling =  len(partial_vertiport_list)
+        #! WHY IS THIS conditional HERE - its never used 
         if region_index_for_sampling: 
             for region in range(region_index_for_sampling, required_vertiports):
                 vertiport = random.sample(self.regions_dict[region], k=1)[0] #! random.sample() returns a list
                 partial_vertiport_list.append(vertiport)
 
         complete_list_vertiport = partial_vertiport_list
-        # print(f'In file airspace.fill_vertiport_from_region(), printing complete_list_vertiport{complete_list_vertiport}')
+        # print(f'In file airspace.random_fill_remaining_vertiport_slots(), printing complete_list_vertiport{complete_list_vertiport}')
         return complete_list_vertiport
 
         # using the previous information about 
@@ -379,7 +442,7 @@ class Airspace: #                                                               
     def set_vertiport_list_vp_design(self, complete_vertiport_list):
         #! why is this +=, that would mean argument is added to previous self.vertiport, 
         #! complete_vertiport_list consists of all required vertiports for running map_env simulation 
-        #! complete_vertiport_list comes from airspace.fill_vertiport_from_region()
+        #! complete_vertiport_list comes from airspace.random_fill_remaining_vertiport_slots()
         self.vertiport_list = complete_vertiport_list 
         return None 
     
@@ -401,13 +464,27 @@ class Airspace: #                                                               
         
 
     #     return region_vertiport_dict
-# if __name__ == '__main__':
-#     airspace = Airspace(12, "Austin, Texas, USA", airspace_tag_list=[], vertiport_tag_list=[('building', 'commercial')])
+if __name__ == '__main__':
+    airspace = Airspace(12, "Austin, Texas, USA", airspace_tag_list=[], vertiport_tag_list=[]) #('building', 'commercial')
     
-#     airspace.create_vertiports_from_regions('commercial', num_regions=5, n_sample_from_region=2)
-#     for vertiport in airspace.get_vertiport_list():
-#         print(vertiport)
-#         print(vertiport.region)
+    # airspace.create_vertiports_from_regions('commercial', num_regions=5, n_sample_from_region=2)
+    # for vertiport in airspace.get_vertiport_list():
+    #     print(vertiport)
+    #     print(vertiport.region)
+
+    airspace.make_regions_dict_vp_des_test_mode()
+    print(airspace.regions_dict)
+    print(airspace.num_regions)
+    random_vp = Vertiport(Point(12,13))
+    random_vp.region = 0
+    vp_list = airspace.random_fill_remaining_vertiport_slots([random_vp])
+    for vp in vp_list:
+        print(vp)
+        print(vp.region)
+    print(airspace.vertiport_list)
+    
+
+    
     
 
 
