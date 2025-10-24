@@ -51,7 +51,7 @@ This command installs the latest Cython which will enable you to install pyrvo2 
 
 main.py: Runs simulation with basic UAV's
 
-### Singel Agent
+### Single Agent
 
 train_single_agent.py: Runs simulation for with one agent and specified number of basic uav's
 
