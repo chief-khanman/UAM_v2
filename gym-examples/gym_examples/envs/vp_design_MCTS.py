@@ -5,7 +5,17 @@ import random
 import time
 
 from map_env_revised import MapEnv
+from vertiport import Vertiport
 from MCTS import mcts_search, choose_best_mcts_action
+
+TEST_MODE = True
+
+if TEST_MODE:
+    vertiport_tag_list = []
+else:
+    vertiport_tag_list=[('building', 'commercial')]
+
+
 
 
 env = MapEnv(number_of_uav=0,
@@ -13,7 +23,7 @@ env = MapEnv(number_of_uav=0,
              number_of_vertiport=2, #! this argument is ONLY used for creating random vertiports 
              location_name='Austin, Texas, USA',
              airspace_tag_list=[],
-             vertiport_tag_list=[('building', 'commercial')], #! use a tag-tag_str that has few vertiports  
+             vertiport_tag_list=vertiport_tag_list, #! use a tag-tag_str that has few vertiports  
              max_episode_steps=100,
              number_of_other_agents_for_model=7,#what is this???
              sleep_time=0,
@@ -35,7 +45,8 @@ class VertiportDesignEnv():
                  env = env, #instance of MapEnv
                  num_regions = 4,
                  map_env_timestep = 1000,
-                 seed=123):
+                 seed=123,
+                 test_mode=True):
         self.seed = seed
         # create an instance of mapped_env
         self.env = env
@@ -44,9 +55,23 @@ class VertiportDesignEnv():
         # this will create regions in airspace module 
         # NO vertiports
         self.env.set_airspace_vp_design()
-        self.env.airspace.make_regions_dict('commercial', num_regions=num_regions)
+        # START WORKING:  --- Oct 20, 2025
+        # Hand place vertiports 
+        # Define underlying region 
+        if test_mode:
+            #make vertiports
+            #from list of location, or from centeroid
+            print('Vertiport Design problem in test mode')
+            self.env.airspace.make_regions_dict_vp_des_test_mode()
+        # OR use region_tags
+        else:
+            self.env.airspace.make_regions_dict_vp_des('commercial', num_regions=num_regions)
+        # END # WORKING:  --- Oct 20, 2025
+        
+        
         self.map_env_timestep = map_env_timestep
         self.selected_vertiport_list:List = []
+        #! start_state unused variable 
         self.start_state:Tuple = len(self.selected_vertiport_list) == 0
         
         #! remember this attr only available once env.airspace.make_region_and_vertiport_list() method is run
@@ -60,6 +85,12 @@ class VertiportDesignEnv():
         
         return None
 
+
+
+    
+
+
+
     def reset(self,):
 
         # self.selected_vertiport_list <- is state of vp_design_problem
@@ -70,6 +101,7 @@ class VertiportDesignEnv():
         '''get the internal state''' 
         return self.selected_vertiport_list
     
+    #! this method is not being used anywhere 
     def set_state(self, vertiport_list:List):
         '''manually set the internal state'''
 
@@ -109,10 +141,11 @@ class VertiportDesignEnv():
 
         vertiports_selected_by_mcts = deepcopy(self.selected_vertiport_list)
 
-        vertiports_for_mapped_env = self.env.airspace.fill_vertiport_from_region(vertiports_selected_by_mcts)
+        vertiports_for_mapped_env = self.env.airspace.random_fill_remaining_vertiport_slots(vertiports_selected_by_mcts)
         print(' vp_design_MCTS, VertiportDesignEnv.step() -> vertiports')
         # step1 - add the vertiports list to env
         # run env-simulation with remaining region-vertiports selected randomly 
+        # up until this point env.airspace.vertiportlist = []
         self.env.airspace.set_vertiport_list_vp_design(vertiports_for_mapped_env)
         # step2 - reset env
         map_env_obs, map_env_info = self.env.reset(seed=self.seed)
@@ -123,7 +156,7 @@ class VertiportDesignEnv():
         # step4 - run env for n-env steps (after n-env steps the mapped env will reach terminal state)
                                         #  and I will be able to collect end metrics 
         
-
+        #### SIMULATOR LOOP - START ####
         map_env_current_timestep = 0
         while map_env_current_timestep != self.map_env_timestep:
             auto_uav_action = self.env.agent.controller(map_env_info) 
@@ -132,6 +165,7 @@ class VertiportDesignEnv():
             map_env_current_timestep += 1
             if map_env_terminated or map_env_truncated:
                 break
+        #### SIMULATOR LOOP - END ####
         
 
         
@@ -162,7 +196,7 @@ class VertiportDesignEnv():
         vertiports_selected_by_mcts = deepcopy(current_state)
         vertiports_selected_by_mcts.append(vertiport_from_region)
         # print(f'in file vp_design_MCTS.simulate_step, printing vertiport_from_region: {vertiports_selected_by_mcts}')
-        vertiports_for_mapped_env = self.env.airspace.fill_vertiport_from_region(vertiports_selected_by_mcts)
+        vertiports_for_mapped_env = self.env.airspace.random_fill_remaining_vertiport_slots(vertiports_selected_by_mcts)
         # step1 - add the vertiports list to env
         # run env-simulation with remaining region-vertiports selected randomly 
         self.env.airspace.set_vertiport_list_vp_design(vertiports_for_mapped_env)
@@ -173,7 +207,7 @@ class VertiportDesignEnv():
         # step4 - run env for n-env steps (after n-env steps the mapped env will reach terminal state)
                                         #  and I will be able to collect end metrics 
         
-
+        #### SIMULATOR LOOP - START ####
         current_timestep = 0
         while current_timestep != self.map_env_timestep:
             auto_uav_action = self.env.agent.controller(map_env_info) #! convert env to self.env
@@ -182,7 +216,7 @@ class VertiportDesignEnv():
             if terminated or truncated:
                 break
         
-
+        #### SIMULATOR LOOP - END   ####
         
         # collect statistics 
         #TODO: this method does not return anything
