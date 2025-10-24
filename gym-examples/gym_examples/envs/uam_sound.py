@@ -23,9 +23,9 @@ def get_map_bounds(location_gdf:GDF):
     # get bounds from airspace 
     min_x, min_y, max_x, max_y = location_gdf.total_bounds
     # floor min_x and min_y 
-    min_x , min_y = float(math.floor(min_x)), float(math.floor(min_y))
+    min_x , min_y = int(math.floor(min_x)), int(math.floor(min_y))
     # ceil max_x and max_y
-    max_x, max_y = float(math.ceil(max_x)), float(math.ceil(max_y))
+    max_x, max_y = int(math.ceil(max_x)), int(math.ceil(max_y))
 
     return min_x, min_y, max_x, max_y
 
@@ -43,7 +43,7 @@ def create_noise_matrix(min_x, min_y, max_x, max_y, cell_dim = 100):
         '''
     
     
-    rows, cols = (max_y - min_y)/cell_dim, (max_x - min_x)/cell_dim
+    rows, cols = int((max_y - min_y)/cell_dim), int((max_x - min_x)/cell_dim)
     noise_matrix = np.zeros((rows, cols))
     
     return noise_matrix
@@ -70,7 +70,7 @@ def uav_array_window(window_ln, center_idx):
     return window
 
 # position to array index
-def pos2idx(position:Point, minx, miny):
+def pos2idx(position:Point, minx:int, miny:int):
     ''' Using position within map, 
         return corresponding array index'''
     # if a UAV's x position is 3.9999
@@ -82,7 +82,7 @@ def pos2idx(position:Point, minx, miny):
     # so, UAV current_pos belongs to array_pos (row, col) -> (0,0)
     #  
     
-    x, y  = float(math.floor(position.x)), float(math.floor(position.y))
+    x, y  = int(math.floor(position.x)), int(math.floor(position.y))
     col = x - minx
     row = y - miny
     index = (row, col)
@@ -126,7 +126,7 @@ def get_noise_intensity(uav_current_pos, uav_current_speed, uav_rotor_speed, obs
         float  
     '''
     if noise_model == None:
-        raise RuntimeError('noise model not passed to kwarg')
+        raise NotImplementedError('noise model not passed to kwarg')
     
     # noise_model has to be a pytorch model
     # add a check to ensure noise_model is a pytorch model
@@ -158,7 +158,7 @@ def calculate_noise_window(uav:UAV_v2_template, win_len, minx, miny, noise_matri
     pass
 
 
-def set_noise_matrix_2_xr(current_time_step, ):
+def set_noise_matrix_2_xarray(current_time_step, ):
     # add the noise matrix of current time step to x_array
 
     pass
@@ -180,5 +180,22 @@ def set_noise_matrix_2_xr(current_time_step, ):
 #   plot noise_matrix USING ??? (there is a matplotlib method for plotting heat map, need to make sure its able to superimpose over existing static and dynamic assets)
 
 if __name__ == '__main__':
-    some_window = uav_array_window(5,(1,1))
-    print(some_window)
+    from airspace import Airspace
+    airspace = Airspace(12, "Austin, Texas, USA")
+
+    minx, miny, maxx, maxy = get_map_bounds(airspace.location_utm_gdf)
+    print(minx, miny, maxx, maxy)
+
+    noise_matrix = create_noise_matrix(minx, miny, maxx, maxy)
+    print(f'Noise matrix: {noise_matrix}')
+    print(f'Noise matrix shape: {noise_matrix.shape}')
+    
+    uav_pos2index = pos2idx(Point(602201.377178908, 3330295.7490083342),minx, miny)
+    print(f'index of UAV position:{uav_pos2index}')
+
+    some_window = uav_array_window(5,uav_pos2index)
+    print(f'window at current uav position: {some_window}')
+    
+
+    
+    
