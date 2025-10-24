@@ -50,13 +50,26 @@ class MapRenderer:
             return
         
         if self.fig is None or self.ax is None:
-            self.fig, self.ax = plt.subplots(figsize=(12, 10))
+            self.fig, self.ax = plt.subplots(figsize=(10, 10))
             plt.ion()  # Interactive mode on
             
         self.ax.clear()
+        self.ax.set_aspect("equal")
+        self.ax.grid(True, which='both', linestyle='--', linewidth=0.5)
         
         # Draw the airspace and restricted areas
         self.render_static_assets(self.ax)
+        
+        # Draw the sound heat map
+        sound_map = np.random.rand(464,361)
+        extent = (602201.377178908, 638378.8759272858, 3330295.7490083342, 3376699.839849744)
+        im = self.ax.imshow(
+                        sound_map,
+                        extent=extent,
+                        origin='lower',
+                        alpha=0.3,     # transparency so the map is visible
+                        interpolation='nearest'  # or 'bilinear' if you prefer smoothing
+                    )
         
         # Store current positions for trajectory history
         current_positions = []
@@ -190,19 +203,21 @@ class MapRenderer:
                             all_x_coords.extend([bound[0], bound[2]])
                             all_y_coords.extend([bound[1], bound[3]])
         
+        #! limited map rendering has been deactivated - for clearer sound heat map visualization 
         # Set limits with margin
-        if all_x_coords and all_y_coords:
-            x_min, x_max = min(all_x_coords), max(all_x_coords)
-            y_min, y_max = min(all_y_coords), max(all_y_coords)
+        # if all_x_coords and all_y_coords:
+        #     x_min, x_max = min(all_x_coords), max(all_x_coords)
+        #     y_min, y_max = min(all_y_coords), max(all_y_coords)
             
-            # Add margin to ensure all elements are visible
-            margin = max(500, (x_max - x_min) * 0.1)
-            self.ax.set_xlim(x_min - margin, x_max + margin)
-            self.ax.set_ylim(y_min - margin, y_max + margin)
+        #     # Add margin to ensure all elements are visible
+        #     margin = max(500, (x_max - x_min) * 0.1)
+        #     self.ax.set_xlim(x_min - margin, x_max + margin)
+        #     self.ax.set_ylim(y_min - margin, y_max + margin)
         
         self.ax.set_title(f'UAM Simulation - {self.env.location_name} - Step {self.env.current_time_step}')
         self.ax.set_aspect('equal')
-        
+        self.ax.set_xlim(extent[0], extent[1])
+        self.ax.set_ylim(extent[2], extent[3])
         plt.draw()
         plt.pause(self.sleep_time) #! why use this instead of time.sleep()
 
@@ -537,10 +552,13 @@ class MapRenderer:
     def render_static_assets(self, ax):
         """Render the static assets of the environment (map, restricted areas)."""
         # Draw map boundaries
-        self.env.airspace.location_utm_gdf.plot(ax=ax, color="gray", linewidth=0.6)
-        # GRID
-        # need to add grid if needed here 
-        # plt.grid(visible=True)
+        self.env.airspace.location_utm_gdf.plot(ax=ax, color="gray", linewidth=0.6, alpha=0.5)
+        
+
+        
+        # Grid
+        
+        
         
         # Draw restricted areas
         if hasattr(self.env.airspace, 'location_tags'):
