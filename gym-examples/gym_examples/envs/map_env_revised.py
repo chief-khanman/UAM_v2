@@ -206,6 +206,7 @@ class MapEnv(gym.Env):
 
         
         # Now update all non-learning UAVs
+        #TODO: Parallelization for detection, nmac, and collision - get_collision/nmac and other operations can be parallelized 
         for uav in self.atc.get_uav_list():
             # print('Len uav list:', len(self.atc.get_uav_list()))
             if not isinstance(uav, Auto_UAV_v2):  # Only process non-learning UAVs
