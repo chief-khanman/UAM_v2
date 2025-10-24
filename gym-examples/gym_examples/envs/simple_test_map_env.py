@@ -381,12 +381,12 @@ if __name__ == "__main__":
     
     # Increase to 500 steps to see more movement
     test_map_env_with_random_actions(
-        number_uav= 3,
+        number_uav= 5,
         number_orca_agents= 1,
-        number_of_vp=5,
+        number_of_vp=10,
         episodes=1,
-        max_steps_per_episode=5000,
-        render=False,
+        max_steps_per_episode=750,
+        render=True,
         save_animation=False,
         env_seed=env_seed,
         episode_seeds=episode_seeds,
