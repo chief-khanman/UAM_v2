@@ -54,7 +54,7 @@ class MapEnv(gym.Env):
         num_vertiport_region = 5,
         n_sample_from_region = 2,
         max_episode_steps=1000, # number of gym steps per episode 
-        number_of_other_agents_for_model=7, # max number of other agents that learning agent tracks for LSTM-A2C model 
+        number_of_other_agents_observed_for_model=7, # max number of other agents that learning agent tracks for LSTM-A2C model 
         sleep_time=0.005,
         seed=70,
         obs_space_str=None, #! this will be used to choose the constructor 
@@ -85,7 +85,7 @@ class MapEnv(gym.Env):
         self.n_sample_from_region = n_sample_from_region
         self.max_uavs = max_uavs
         self.max_vertiports = max_vertiports
-        self.max_number_other_agents_observed = number_of_other_agents_for_model
+        self.max_number_other_agents_observed = number_of_other_agents_observed_for_model
         self.max_episode_steps = max_episode_steps
         self.sleep_time = sleep_time
         self._seed = seed
