@@ -35,7 +35,7 @@ class Airspace: #                                                               
             location_utm_hospital_buffer (UTM): buffer around the hospital
         """
         self.vertiport_tags = {}
-        self.vertiport_feat = {}
+        self.vertiport_feature_gdf = {}
         self.vertiport_utm = {}
 
         self.location_name = location_name  #'Austin, Texas, USA'
@@ -54,8 +54,8 @@ class Airspace: #                                                               
             #                          vertiport_tag_list: List[Tuple('building', 'commercial'), ... , ... , ... ]
             for tag, tag_value in self.vertiport_tag_list:
                 self.vertiport_tags[tag_value] = tag
-                self.vertiport_feat[tag_value] = ox_features.features_from_polygon(location_gdf["geometry"][0], tags={tag:tag_value})
-                self.vertiport_utm[tag_value] = ox_projection.project_gdf(self.vertiport_feat[tag_value])
+                self.vertiport_feature_gdf[tag_value] = ox_features.features_from_polygon(location_gdf["geometry"][0], tags={tag:tag_value})
+                self.vertiport_utm[tag_value] = ox_projection.project_gdf(self.vertiport_feature_gdf[tag_value])
 
 
 
@@ -64,7 +64,7 @@ class Airspace: #                                                               
         if self.airspace_tag_list:
             # airspace features and restricted airspace 
             self.location_tags = {}
-            self.location_feature = {}
+            self.location_feature_gdf = {}
             self.location_utm = {}
             self.location_utm_buffer = {}
             
@@ -73,8 +73,8 @@ class Airspace: #                                                               
             
             for tag, tag_value in self.airspace_tag_list:
                 self.location_tags[tag_value] = tag
-                self.location_feature[tag_value] = ox_features.features_from_polygon(location_gdf["geometry"][0], tags={tag:tag_value})
-                self.location_utm[tag_value] = ox_projection.project_gdf(self.location_feature[tag_value])
+                self.location_feature_gdf[tag_value] = ox_features.features_from_polygon(location_gdf["geometry"][0], tags={tag:tag_value})
+                self.location_utm[tag_value] = ox_projection.project_gdf(self.location_feature_gdf[tag_value])
                 self.location_utm_buffer[tag_value] = self.location_utm[tag_value].buffer(self.buffer_radius)
                 self.airspace_restricted_area_array.append(self.location_utm[tag_value])
                 self.airspace_restricted_area_buffer_array.append(self.location_utm_buffer[tag_value])
@@ -367,9 +367,10 @@ class Airspace: #                                                               
         for region_center in region_center_list:
             _vertiport_list = []
             vertiport_centers_list = self.build_pattern(region_center, 300)
-            for vertiport_center in vertiport_centers_list:
+            for i,vertiport_center in enumerate(vertiport_centers_list):
                 _vp = Vertiport(Point(vertiport_center[0], vertiport_center[1]))
                 _vp.region = region
+                _vp.vp_id_for_region = i
                 _vertiport_list.append(_vp)
             self.regions_dict[region] = _vertiport_list
             region += 1
