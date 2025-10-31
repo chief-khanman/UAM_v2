@@ -271,9 +271,10 @@ class A2CTrainer:
         self.value_coef = value_coef
         self.entropy_coef = entropy_coef
         
-        # Track current selection
+        # Track current selection AND metrics (STATE = config + metrics)
         self.current_selected_vertiports = None
         self.current_selected_indices = None
+        self.current_metrics = None  # Store metrics as part of state!
         
     def compute_reward(self, selected_vertiports, simulator_metrics=None):
         """
@@ -329,14 +330,11 @@ class A2CTrainer:
         """
         x, edge_index, edge_attr = graph_data
         
-        # Forward pass - using complete information - graph + metrics
+        # Forward pass
         selected_stations, log_probs, value, entropy, action_changed = self.model(
-                                                                                    x, 
-                                                                                    edge_index, 
-                                                                                    edge_attr, 
-                                                                                    region_mask, 
-                                                                                    current_selection=current_selection,
-                                                                                    training=True
+            x, edge_index, edge_attr, region_mask, 
+            current_selection=current_selection,
+            training=True
         )
         
         # Compute advantage
@@ -374,17 +372,17 @@ class A2CTrainer:
             'selected_stations': selected_stations.cpu().numpy()
         }
     
-    def train_episode(self, simulator:MapEnv, simulator_steps, num_design_steps=1):
+    def train_episode(self, simulator, simulator_steps, num_design_steps=1):
         """
         Train for one episode
         
         Flow:
-        1. Start with initial or previous vertiport selection
-        2. GNN-RL proposes new selection (or keeps current via NO ACTION)
-        3. Update graph with new selection
-        4. Run simulator to get metrics
-        5. Compute reward
-        6. Update model
+        1. Start with previous vertiport selection AND metrics (STATE)
+        2. GNN-RL proposes new selection (ACTION) based on current state
+        3. Run simulator with new selection to get new metrics
+        4. Compute reward for new configuration
+        5. Train model on transition: (old_state, action, reward, new_state)
+        6. Update current state (selection + metrics)
         
         Args:
             simulator: MapEnv instance
@@ -400,37 +398,29 @@ class A2CTrainer:
             for region_id in sorted(self.graph_builder.airspace.region_dict.keys()):
                 first_vp = self.graph_builder.airspace.region_dict[region_id][0]
                 self.current_selected_vertiports.append(first_vp)
-            
-            # attr to hold the index information of current
-            # selected vertiports in sequential order of regions from 0 to n-1 region_id
             self.current_selected_indices = self.graph_builder.vertiports_to_indices(
                 self.current_selected_vertiports
             )
+            # Current metrics is None only for FIRST episode ever
+            # After first episode, we'll have metrics from simulator
         
         for design_step in range(num_design_steps):
-            # Build graph with current selection
+            # Build graph with current selection AND PREVIOUS METRICS
+            # This represents the TRUE state: (configuration, observed metrics)
             x, edge_index, edge_attr = self.graph_builder.build_graph(
-                                                                        selected_vertiports=self.current_selected_vertiports, # this is the random vertiport_list start 
-                                                                        #! metrics - WHY is it NONE, I can assign metrics for the random selection 
-                                                                        #!           since the random selection will be used to run the simulator
-                                                                        #!           the pre and post metrics can be calculated 
-                                                                        metrics=None  # No metrics yet for first pass
+                selected_vertiports=self.current_selected_vertiports,
+                metrics=self.current_metrics  #FIX: Use stored metrics!
             )
             
             # Model proposes new selection (or keeps current)
-            # POLICY network
-            # s -> POLICY -> a 
             with torch.no_grad():
-                # action                                        policy_net(state = x,edge...)
                 new_selected_indices, _, _, _, action_changed = self.model(
-                                                                            x, 
-                                                                            edge_index, 
-                                                                            edge_attr, 
-                                                                            self.graph_builder.region_mask,
-                                                                            current_selection=self.current_selected_indices,
-                                                                            training=True
+                    x, edge_index, edge_attr, 
+                    self.graph_builder.region_mask,
+                    current_selection=self.current_selected_indices,
+                    training=True
                 )
-            #! check how current_selected_indices are compared against new_selected_vertiport
+            
             # Convert to vertiports
             new_selected_vertiports = self.graph_builder.indices_to_vertiports(
                 new_selected_indices
@@ -439,7 +429,7 @@ class A2CTrainer:
             # Set vertiports in simulator
             simulator.airspace.set_vertiport_list_vp_design(new_selected_vertiports)
             
-            # Run simulator(ENV): (s,a)-> ENV -> r,s'
+            # Run simulator
             obs, info = simulator.reset(seed=None)
             
             for sim_step in range(simulator_steps):
@@ -449,31 +439,38 @@ class A2CTrainer:
                 if terminated or truncated:
                     break
             
-            # Collect metrics
+            # Collect metrics from simulator
+            #! check this method and make sure this is using the initial_metric and end_metrics from map_env
             simulator_metrics = self._collect_simulator_metrics(simulator)
             
-            # Compute vertiport design problem reward
+            # Compute reward for this NEW configuration
             reward = self.compute_reward(new_selected_vertiports, simulator_metrics)
             episode_rewards.append(reward)
             
-            # Rebuild graph with updated metrics
-            x, edge_index, edge_attr = self.graph_builder.build_graph(
+            # Rebuild graph with NEW selection and NEW metrics
+            # This is the state the model will see NEXT time
+            x_new, edge_index_new, edge_attr_new = self.graph_builder.build_graph(
                 selected_vertiports=new_selected_vertiports,
                 metrics=simulator_metrics
             )
             
-            # Training step
+            # Training step: learn from transition
+            # Old state: (x, edge_index, edge_attr) with old metrics
+            # Action: selected new vertiports
+            # Reward: from simulator
+            # New state: (x_new, ...) with new metrics (not used in A2C, but available)
             stats = self.train_step(
-                (x, edge_index, edge_attr), # full information - graph + complete_metrics
+                (x_new, edge_index_new, edge_attr_new),  # Use new state with metrics
                 self.graph_builder.region_mask,
                 reward,
                 self.current_selected_indices
             )
             episode_stats.append(stats)
             
-            # Update current selection for next iteration
+            # Update current state for NEXT episode/step
             self.current_selected_vertiports = new_selected_vertiports
             self.current_selected_indices = new_selected_indices
+            self.current_metrics = simulator_metrics  # ← FIX: Store metrics!
             
             print(f"  Design step {design_step}: "
                   f"Reward={reward:.3f}, "
@@ -481,11 +478,11 @@ class A2CTrainer:
         
         # Return average stats
         avg_stats = {
-                        'reward': np.mean(episode_rewards),
-                        'loss': np.mean([s['loss'] for s in episode_stats]),
-                        'value_estimate': np.mean([s['value_estimate'] for s in episode_stats]),
-                        'advantage': np.mean([s['advantage'] for s in episode_stats]),
-                    }
+            'reward': np.mean(episode_rewards),
+            'loss': np.mean([s['loss'] for s in episode_stats]),
+            'value_estimate': np.mean([s['value_estimate'] for s in episode_stats]),
+            'advantage': np.mean([s['advantage'] for s in episode_stats]),
+        }
         
         return episode_rewards, avg_stats
     
@@ -510,6 +507,10 @@ class A2CTrainer:
 
 # Main execution
 if __name__ == "__main__":
+    test_mode = True
+    num_regions = 4
+
+
     TEST_MODE = True
     
     if TEST_MODE:
@@ -526,7 +527,7 @@ if __name__ == "__main__":
         airspace_tag_list=[],
         vertiport_tag_list=vertiport_tag_list,
         max_episode_steps=100,
-        number_of_other_agents_observed_for_model=7,
+        number_of_other_agents_for_model=7,
         sleep_time=0,
         seed=70,
         obs_space_str='UAM_UAV',
@@ -545,7 +546,17 @@ if __name__ == "__main__":
         edge_feature_dim=12,
         connectivity_type='inter_intra'  # or 'full'
     )
-    
+    #! this attribute is NOT initiated - ERROR attr not defined - FIX:  !!
+    uam_simulator.set_airspace_vp_design()
+    if test_mode:
+        #make vertiports
+        #from list of location, or from centeroid
+        print('Vertiport Design problem in test mode')
+        uam_simulator.airspace.make_regions_dict_vp_des_test_mode()
+    # OR use region_tags
+    else:
+        uam_simulator.airspace.make_regions_dict_vp_des('commercial', num_regions=num_regions)
+
     num_regions = len(uam_simulator.airspace.region_dict)
     
     # Initialize model
@@ -572,7 +583,7 @@ if __name__ == "__main__":
     for episode in range(num_episodes):
         print(f"\n=== Episode {episode} ===")
         
-        rewards, stats = trainer.train_episode( #TRAINING FOR 100 EPS
+        rewards, stats = trainer.train_episode(
             simulator=uam_simulator,
             simulator_steps=100,
             num_design_steps=1  # Number of design iterations per episode
@@ -588,8 +599,11 @@ if __name__ == "__main__":
     
     # Inference
     rl_model.eval()
+    
+    # Build graph with CURRENT state (selection + metrics from training)
     x, edge_index, edge_attr = graph_builder.build_graph(
-        selected_vertiports=trainer.current_selected_vertiports
+        selected_vertiports=trainer.current_selected_vertiports,
+        metrics=trainer.current_metrics  # Use metrics from training!
     )
     
     selected_indices, value = rl_model.select_vertiports(
