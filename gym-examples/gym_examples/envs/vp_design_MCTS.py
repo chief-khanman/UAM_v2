@@ -236,7 +236,8 @@ class VertiportDesignEnv():
     def get_action_space_size(self,region):
         # number of vertiport for a given region 
         return len(self.env.airspace.get_vertiports_of_region(region))
-        
+
+    #! CHANGE/UPDATE: for test_mode - reward is negative of sum of distance between selected vertiports
     def _get_reward(self, map_env_start_metrics, map_env_end_metrics):
         return random.random() * 10
         
