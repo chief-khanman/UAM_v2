@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import shapely
 import pandas as pd
 import geopandas as gpd
@@ -366,7 +367,7 @@ class Airspace: #                                                               
         region = 0
         for region_center in region_center_list:
             _vertiport_list = []
-            vertiport_centers_list = self.build_pattern(region_center, 300)
+            vertiport_centers_list = self.build_pattern(region_center, 1000)
             for i,vertiport_center in enumerate(vertiport_centers_list):
                 _vp = Vertiport(Point(vertiport_center[0], vertiport_center[1]))
                 _vp.region = region
@@ -467,7 +468,7 @@ class Airspace: #                                                               
 
     #     return region_vertiport_dict
 if __name__ == '__main__':
-    airspace = Airspace(12, "Austin, Texas, USA", airspace_tag_list=[], vertiport_tag_list=[]) #('building', 'commercial')
+    airspace = Airspace(1, "Austin, Texas, USA", airspace_tag_list=[], vertiport_tag_list=[]) #('building', 'commercial')
     
     # airspace.create_vertiports_from_regions('commercial', num_regions=5, n_sample_from_region=2)
     # for vertiport in airspace.get_vertiport_list():
@@ -476,17 +477,31 @@ if __name__ == '__main__':
 
     airspace.make_regions_dict_vp_des_test_mode()
     print(airspace.regions_dict)
+    x_arr = []
+    y_arr = []
+    for region, vp_list in airspace.regions_dict.items():
+        for vp in vp_list:
+            x_arr.append(vp.x)
+            y_arr.append(vp.y)
+    plt.scatter(x_arr,y_arr)
+    for x, y in zip(x_arr, y_arr):
+        plt.annotate(f'({x:.2f}, {y:.2f})', (x, y), textcoords='offset points', xytext=(4, 4), fontsize=8)
+    plt.show()
+
     print(airspace.num_regions)
-    random_vp = Vertiport(Point(12,13))
-    random_vp.region = 0
-    vp_list = airspace.random_fill_remaining_vertiport_slots([random_vp])
-    for vp in vp_list:
-        print(vp)
-        print(vp.region)
-    print(airspace.vertiport_list)
+    # random_vp = Vertiport(Point(12,13))
+    # random_vp.region = 0
+    # complete_vp_list = airspace.random_fill_remaining_vertiport_slots([random_vp])
+    # for vp in complete_vp_list:
+    #     print(vp)
+    #     print(vp.region)
+    
+    # print(f'Before filling vertiports: {airspace.vertiport_list}')
+    # airspace.set_vertiport_list_vp_design(complete_vp_list)
+    # print(f'After filling vertiports: {airspace.vertiport_list}')
+    # print(airspace.number_of_vertiports)
     
 
     
     
-
 
