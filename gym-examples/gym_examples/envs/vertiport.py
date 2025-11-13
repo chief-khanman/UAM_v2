@@ -15,6 +15,11 @@ class Vertiport:
         self.region = None
         self.vp_id_for_region = None
         # passenger arrival rate - an exponential distribution learned from metro data
+        self.set_metrics(0,0,0)
+        # metrics
+        self.metrics = {'total_throughput':self.total_throughput, 
+                        'avg_wait_time':self.avg_wait_time,
+                        'avg_delay':self.avg_delay}
         
 
     def __repr__(
@@ -44,8 +49,41 @@ class Vertiport:
     def get_uav_list():
         pass
 
+
+    def set_metrics(self, total_throughput, avg_wait_time, avg_delay):
+        
+        self.total_throughput = 0
+        self.avg_wait_time = 0
+        self.avg_delay = 0
+        pass
+
+
+    def get_metrics(self):
+        return self.total_throughput, self.avg_wait_time, self.avg_delay 
     
 
 if __name__ == '__main__':
-    random_vertiport = Vertiport(Point(12,13))
-    print(random_vertiport.location)
+    # vp1 = Vertiport(Point(12,13))
+    # vp2 = Vertiport(Point(14,14))
+    # vp3 = Vertiport(Point(16,17))
+    # vp4 = Vertiport(Point(21,31))
+
+    vp1 = Vertiport(Point(10.,10.))
+    vp2 = Vertiport(Point(11.,11.))
+    vp3 = Vertiport(Point(12.,12.))
+    vp4 = Vertiport(Point(13.,13.))
+
+
+
+    vp_list = [vp1, vp2, vp3, vp4]
+
+    best_locations = [(10,10), (11,11), (12,12), (13,13)]
+    best_count = 0
+    for _vp in vp_list:
+        tempxy = (_vp.x, _vp.y)
+        if tempxy in best_locations:
+            best_count +=1
+    if best_count == 4:
+        print('Found best')
+    else:
+        print('Found nothing')
