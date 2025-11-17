@@ -53,7 +53,7 @@ class MapEnv(gym.Env):
         vertiport_tag_str = 'commercial',
         num_vertiport_region = 5,
         n_sample_from_region = 2,
-        max_episode_steps=1000, # number of gym steps per episode 
+        max_episode_steps=1000, #TODO: max_step_per_episode (number of gym steps per episode)
         number_of_other_agents_observed_for_model=7, # max number of other agents that learning agent tracks for LSTM-A2C model 
         sleep_time=0.005,
         seed=70,
@@ -828,8 +828,16 @@ class MapEnv(gym.Env):
 
         #TODO: UPDATE HOW VERTIPORTS ARE CREATED 
         # Create vertiports
+        #TODO: this line will cut vertiports and reduce them to 10 from 16 
+        print(f'Before minimizing vertiports: {self.number_of_vertiport}')
         num_vertiports = min(self.max_vertiports, self.number_of_vertiport)  # Use a reasonable number
-        
+        #! LETS print and make sure we are actually using all the vertiports from the vertiport/region builder 
+        #! THERE should be 16 vertiports 4 regions 
+        print(num_vertiports)
+        #! WHY is this variable not used
+
+
+
         # if not self.vp_design_problem:
         #     #* create vertiport OPTION 1
         #     # self.airspace.create_n_random_vertiports(num_vertiports, seed=self._seed)
@@ -1028,7 +1036,7 @@ class MapEnv(gym.Env):
     Reward worked for goal direction task but failed to conduct collision avoidance
     Trained on 25,000 steps with PPO"""
     
-    def _collect_initial_metrics(self, ):
+    def _collect_uav_initial_metrics(self, ):
         '''For all UAVs in the env collect their 
         distance: start-end point, 
         time_avg: dist/avg-speed,
@@ -1038,13 +1046,15 @@ class MapEnv(gym.Env):
         self.uav_pre_fligt_info = {}
         
         for uav in self.atc.get_uav_list():
-            self.uav_pre_fligt_info[uav.id] = {'distance': uav.start.distance(uav.end),
-                                          'time_avg': uav.start.distance(uav.end)/uav.max_speed,
-                                          'arrival_rate': 0,  # this info will come from start vertiport
-                                          'service_rate': 0 } # this is an expected service rate of UAVs }
+            self.uav_pre_fligt_info[uav.id] = {'distance': uav.start.distance(uav.end), #edge attr
+                                          'time_avg': uav.start.distance(uav.end)/uav.max_speed, #edge attr
+                                          'arrival_rate': 0,  # this info will come from start vertiport - node attr
+                                          'service_rate': 0 } # this is an expected service rate of UAVs - node attr}
+            
+        
         
     
-    def _collect_episode_end_metrics(self):
+    def _collect_uav_episode_end_metrics(self):
         '''For all UAVs in the env collect the following
          distance-factor: dist-covered(odometer reading)/distance,
          time-factor: time2reach/time-avg,
@@ -1056,14 +1066,22 @@ class MapEnv(gym.Env):
         for uav in self.atc.get_uav_list():
             
             self.uav_post_flight_info[uav.id] = {
-                                          'distance_factor': uav.odometer_reading/uav.start.distance(uav.end), #TODO: what if this metric was multiplied with percentage mission_completion
+                                          'distance_factor': uav.odometer_reading/uav.start.distance(uav.end), #! node attr, WHICH VERTIPORT SHOULD HOLD THIS ATTR #TODO: what if this metric was multiplied with percentage mission_completion
                                           #'time_factor': time_traveled/self.uav_post_fligt_info[uav.id]['distance']/uav.max_speed,
-                                          'NMAC_count': uav.nmac_count,
-                                          'TOTAL_NMAC_count': self.total_nmac_count,  # this is total nmac incidence during episode, ie for all UAVs, might need to change it to individual UAV
-                                          'RA_violation_count': self.total_collision_count,
-                                          'mission_complete': uav.mission_complete_status} # this is total RA collision incidence during episode, ie for all UAVs, might need to change it to individual UAV
+                                          'NMAC_count': uav.nmac_count,#! node attr, WHICH VERTIPORT SHOULD HOLD THIS ATTR
+                                          'TOTAL_NMAC_count': self.total_nmac_count,  #! node attr, WHICH VERTIPORT SHOULD HOLD THIS ATTR# this is total nmac incidence during episode, ie for all UAVs, might need to change it to individual UAV
+                                          'RA_violation_count': self.total_collision_count,#! node attr, WHICH VERTIPORT SHOULD HOLD THIS ATTR
+                                          'mission_complete': uav.mission_complete_status} #! node attr, WHICH VERTIPORT SHOULD HOLD THIS ATTR# this is total RA collision incidence during episode, ie for all UAVs, might need to change it to individual UAV
 
         return None
+    
+
+
+
+    def _collect_pre_flight_vertiport_metrics(self):
+        vp_metrics_dict = {}
+        for vertiport in self.airspace.vertiport_list:
+            vp_metrics_dict[vertiport] = vertiport.metrics
     
     
     # START - General UAV creation method during step()
