@@ -25,7 +25,7 @@ class MetricsTracker:
     """
     Tracks and visualizes all training metrics
     """
-    def __init__(self, save_dir='./training_results', use_tensorboard=True):
+    def __init__(self, save_dir='./GNN_RL_training_results', use_tensorboard=True):
         """
         Args:
             save_dir: Directory to save plots and logs
@@ -50,7 +50,7 @@ class MetricsTracker:
         # TensorBoard
         self.use_tensorboard = use_tensorboard
         if use_tensorboard:
-            tb_dir = os.path.join(save_dir, f'tensorboard_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
+            tb_dir = os.path.join(save_dir, f'tensorboard_{datetime.now().strftime("%Y%m%d_%H%M")}')
             self.writer = SummaryWriter(tb_dir)
             print(f"TensorBoard logging to: {tb_dir}")
         
@@ -78,7 +78,7 @@ class MetricsTracker:
         }
         
         plt.show(block=False)
-    
+    #! why is episode_rewards unused
     def log_episode(self, episode, episode_rewards, stats, design_step_data):
         """
         Log metrics for a completed episode
@@ -146,6 +146,7 @@ class MetricsTracker:
     
     def update_realtime_plot(self):
         """Update real-time plots with latest data"""
+        # this conditional is used as a check statement/sentinal - NOW is this sentinal necessary 
         if len(self.episode_metrics['episode']) == 0:
             return
         
@@ -453,7 +454,7 @@ class VertiportGraphBuilder:
     """
     Builds and manages graph representations of vertiport configurations
     """
-    def __init__(self, airspace, node_feature_dim=20, edge_feature_dim=12, 
+    def __init__(self, airspace, node_feature_dim=7, edge_feature_dim=6, 
                  connectivity_type='inter_intra'):
         """
         Args:
@@ -551,8 +552,8 @@ class VertiportGraphBuilder:
             features = []
             
             # Location features (normalized)
-            features.append(vertiport.location.x)
-            features.append(vertiport.location.y)
+            features.append(vertiport.location.x) #f1
+            features.append(vertiport.location.y) #f2
             
             # Add metrics if available
             # metrics is a dict
@@ -564,19 +565,18 @@ class VertiportGraphBuilder:
             if metrics and 'vertiport_metrics' in metrics:
                 vp_metrics = metrics['vertiport_metrics'].get(vertiport, {})
                 features.extend([
-                    vp_metrics.get('demand', 0.0),
-                    vp_metrics.get('utilization', 0.0),
-                    vp_metrics.get('wait_time', 0.0),
-                    vp_metrics.get('throughput', 0.0),
+                    vp_metrics.get('demand', 1.0), #f3
+                    vp_metrics.get('utilization', 1.0), #f4
+                    vp_metrics.get('wait_time', 1.0), #f5
+                    vp_metrics.get('throughput', 1.0), #f6
                 ])
             else:
                 # Default values if no metrics
-                #TODO: change to some constant value instead of 0.0
-                features.extend([0.0, 0.0, 0.0, 0.0])
+                features.extend([1.0, 1.0, 1.0, 1.0])
             
             # Region encoding (one-hot or region id)
             region_id = self._get_region_id(vertiport)
-            features.append(float(region_id))
+            features.append(float(region_id)) #f7
             
             # Pad to node_feature_dim if needed
             while len(features) < self.node_feature_dim:
@@ -673,12 +673,12 @@ class VertiportGraphBuilder:
         features = []
         
         # Distance (primary feature for reward)
-        distance = self.compute_distance(vp_i, vp_j)
-        features.append(distance)
+        distance = self.compute_distance(vp_i, vp_j) #f1
+        features.append(distance) #f1
         
         # Edge type encoding
         if edge_type == 'inter':
-            features.extend([1.0, 0.0, 0.0])
+            features.extend([1.0, 0.0, 0.0]) #f 2,3,4
         elif edge_type == 'intra':
             features.extend([0.0, 1.0, 0.0])
         else:  # 'full'
@@ -688,12 +688,11 @@ class VertiportGraphBuilder:
         if metrics and 'flow_metrics' in metrics:
             flow = metrics['flow_metrics'].get((vp_i, vp_j), {})
             features.extend([
-                flow.get('traffic', 0.0),
-                flow.get('capacity_used', 0.0),
+                flow.get('traffic', 1.0), #f5
+                flow.get('capacity_used', 1.0), #f6
             ])
         else:
-            #TODO: change this to use [1,1]
-            features.extend([0.0, 0.0])
+            features.extend([1.0, 1.0])
         
         # Pad to edge_feature_dim
         while len(features) < self.edge_feature_dim:
@@ -759,17 +758,20 @@ class A2CTrainer:
         best_count = 0
         print('checking for best vp comb')
         for vertiport in selected_vertiports:
-            print('inside check')
-            time.sleep(1)
+            # print('inside check')
+            # time.sleep(1)
             temp_xy = (vertiport.x, vertiport.y)
-            print(f'Temp vp tuple: {temp_xy}')
+            # print(f'Temp vp tuple: {temp_xy}')
             if temp_xy in best_vertiports:
                 best_count+=1
-                print(f'current best_count {best_count}')
+                # print(f'current best_count {best_count}')
         if best_count == 4:
-            distance_reward = 10000
-            print('FOUND BEST vp arrangement')
+            distance_reward = 1000000
             time.sleep(3)
+            print('Found best arrangement')
+            return distance_reward, total_distance
+            # print('FOUND BEST vp arrangement')
+            # time.sleep(3)
         else:
             # Reward is negative distance (we want to minimize total distance)
             distance_reward = -total_distance
@@ -785,7 +787,7 @@ class A2CTrainer:
                 simulator_metrics.get('avg_delay', 0.0) * 3.0
             )
             # Weighted combination
-            reward = 0.3 * distance_reward + 0.7 * sim_reward
+            reward = distance_reward # 0.3 * distance_reward + 0.7 * sim_reward
         else:
             reward = distance_reward
         
@@ -1029,19 +1031,19 @@ if __name__ == "__main__":
     # Initialize graph builder
     graph_builder = VertiportGraphBuilder(
         airspace=uam_simulator.airspace,
-        node_feature_dim=20,
-        edge_feature_dim=12,
+        node_feature_dim=7, # x,y, 1,1,1,1,region_id
+        edge_feature_dim=6,
         connectivity_type='inter_intra'
     )
     num_regions = len(uam_simulator.airspace.regions_dict)
     
     # Initialize model
     rl_model = StationSelectionGNNRL(
-        node_features=20,
-        edge_features=12,
-        hidden_dim=128,
+        node_features=7,
+        edge_features=6,
+        hidden_dim=16,
         num_regions=num_regions,
-        num_gnn_layers=3
+        num_gnn_layers=1
     )
     
     # ===== NEW: Initialize metrics tracker =====
@@ -1054,7 +1056,7 @@ if __name__ == "__main__":
     trainer = A2CTrainer(
         model=rl_model,
         graph_builder=graph_builder,
-        lr=3e-4,
+        lr=1e-4,
         gamma=0.99,
         value_coef=0.5,
         entropy_coef=0.01,
@@ -1062,7 +1064,7 @@ if __name__ == "__main__":
     )
     
     # Training loop
-    num_episodes = 10
+    num_episodes = 300
     print("\n" + "="*70)
     print("STARTING TRAINING WITH COMPREHENSIVE VISUALIZATION")
     print("="*70)
