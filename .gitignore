@@ -15,4 +15,6 @@ output.txt
 /gym-examples/gym_examples/envs/Python-RVO2
 /gym-examples/gym_examples/envs/models
 /gym-examples/gym_examples/envs/training_logs
+/gym-examples/gym_examples/envs/training_results
+/gym-examples/gym_examples/envs/GNN_RL_notes.txt
 
