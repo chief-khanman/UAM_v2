@@ -1,3 +1,4 @@
+import time
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -35,7 +36,7 @@ class VertiportGraphBuilder:
     def _build_vertiport_mapping(self):
         """Create bidirectional mapping between vertiports and indices"""
         idx = 0
-        for region_id, vertiport_list in self.airspace.region_dict.items():
+        for region_id, vertiport_list in self.airspace.regions_dict.items():
             for vertiport in vertiport_list:
                 self.vertiport_to_idx[vertiport] = idx
                 self.idx_to_vertiport[idx] = vertiport
@@ -46,12 +47,12 @@ class VertiportGraphBuilder:
         Create region mask [num_regions, num_vertiports]
         mask[i, j] = 1 if vertiport j belongs to region i
         """
-        num_regions = len(self.airspace.region_dict)
+        num_regions = len(self.airspace.regions_dict)
         num_vertiports = len(self.vertiport_to_idx)
         
         mask = torch.zeros(num_regions, num_vertiports, dtype=torch.float32)
         
-        for region_id, vertiport_list in self.airspace.region_dict.items():
+        for region_id, vertiport_list in self.airspace.regions_dict.items():
             for vertiport in vertiport_list:
                 vp_idx = self.vertiport_to_idx[vertiport]
                 mask[region_id, vp_idx] = 1.0
@@ -112,6 +113,12 @@ class VertiportGraphBuilder:
             features.append(vertiport.location.y)
             
             # Add metrics if available
+            # metrics is a dict
+            # metrics[key] -> dict; a dict within a dict 
+
+            # metrics is a dict 
+            # one of the KEYS of metrics is 'vertiport_metrics'
+            # 'vertiport_metrics' holds dict[vertiport]: demand, ......
             if metrics and 'vertiport_metrics' in metrics:
                 vp_metrics = metrics['vertiport_metrics'].get(vertiport, {})
                 features.extend([
@@ -122,6 +129,7 @@ class VertiportGraphBuilder:
                 ])
             else:
                 # Default values if no metrics
+                #TODO: change to some constant value instead of 0.0
                 features.extend([0.0, 0.0, 0.0, 0.0])
             
             # Region encoding (one-hot or region id)
@@ -138,10 +146,11 @@ class VertiportGraphBuilder:
     
     def _get_region_id(self, vertiport):
         """Get region ID for a vertiport"""
-        for region_id, vp_list in self.airspace.region_dict.items():
+        for region_id, vp_list in self.airspace.regions_dict.items():
             if vertiport in vp_list:
                 return region_id
         return -1
+    
     
     def _build_fully_connected_graph(self, metrics=None):
         """Build fully connected graph"""
@@ -176,8 +185,8 @@ class VertiportGraphBuilder:
         if selected_vertiports is None:
             # Default: select first vertiport from each region
             selected_vertiports = []
-            for region_id in sorted(self.airspace.region_dict.keys()):
-                selected_vertiports.append(self.airspace.region_dict[region_id][0])
+            for region_id in sorted(self.airspace.regions_dict.keys()):
+                selected_vertiports.append(self.airspace.regions_dict[region_id][0])
         
         # Convert vertiports to indices
         selected_indices = [self.vertiport_to_idx[vp] for vp in selected_vertiports]
@@ -193,7 +202,7 @@ class VertiportGraphBuilder:
                     edge_attrs.append(edge_attr)
         
         # Intra-region edges (within each region)
-        for region_id, vp_list in self.airspace.region_dict.items():
+        for region_id, vp_list in self.airspace.regions_dict.items():
             region_indices = [self.vertiport_to_idx[vp] for vp in vp_list]
             
             for i, idx_i in enumerate(region_indices):
@@ -241,6 +250,7 @@ class VertiportGraphBuilder:
                 flow.get('capacity_used', 0.0),
             ])
         else:
+            #TODO: change this to use [1,1]
             features.extend([0.0, 0.0])
         
         # Pad to edge_feature_dim
@@ -293,6 +303,11 @@ class A2CTrainer:
             reward: Scalar reward value
         """
         # Distance-based component (negative because we want to minimize)
+        # for vp in selected_vertiports:
+        #     print(f'Vertiport x: {vp.x}, x type: {type(vp.x)}')
+        #     time.sleep(2)
+
+
         total_distance = 0.0
         for i, vp_i in enumerate(selected_vertiports):
             for j, vp_j in enumerate(selected_vertiports):
@@ -300,8 +315,27 @@ class A2CTrainer:
                     distance = self.graph_builder.compute_distance(vp_i, vp_j)
                     total_distance += distance
         
-        # Reward is negative distance (we want to minimize total distance)
-        distance_reward = -total_distance
+        #REWARD trick - 
+        best_vertiports = [(623157.,3355240.), (617501., 3355240.), (617501., 3349584.), (623157.,3349584.)]
+        best_count = 0
+        print('checking for best vp comb')
+        for vertiport in selected_vertiports:
+            print('inside check')
+            time.sleep(1)
+            temp_xy = (vertiport.x, vertiport.y)
+            print(f'Temp vp tuple: {temp_xy}')
+            if temp_xy in best_vertiports:
+                best_count+=1
+                print(f'current best_count {best_count}')
+        if best_count == 4:
+            distance_reward = 10000
+            print('FOUND BEST vp arrangement')
+            time.sleep(3)
+        else:
+            # Reward is negative distance (we want to minimize total distance)
+            distance_reward = -total_distance
+
+        
         
         # Add simulator metrics if available
         if simulator_metrics:
@@ -331,6 +365,8 @@ class A2CTrainer:
         x, edge_index, edge_attr = graph_data
         
         # Forward pass
+        #! why is action_change(bool) not used 
+        #TODO: action_changed can be used as a signal to indicate for a given step of RL - we have selected a new vertiport for this simulation run 
         selected_stations, log_probs, value, entropy, action_changed = self.model(
             x, edge_index, edge_attr, region_mask, 
             current_selection=current_selection,
@@ -339,12 +375,17 @@ class A2CTrainer:
         
         # Compute advantage
         reward_tensor = torch.tensor(reward, dtype=torch.float32)
+        # TD error
+        #TODO: check if value is calculated using 1)current_vertiports and 2)new_vertiports/indicies
+        #TODO: check the definition of advantage - make sure this is correct implementation -> R + V(s+1) - V(s)
         advantage = reward_tensor - value.detach()
         
         # Policy loss (Actor)
+        #TODO: plot policy loss
         policy_loss = -(log_probs * advantage)
         
         # Value loss (Critic)
+        #TODO: plot value loss
         value_loss = F.mse_loss(value, reward_tensor)
         
         # Entropy bonus (for exploration)
@@ -368,11 +409,10 @@ class A2CTrainer:
             'value_estimate': value.item(),
             'reward': reward,
             'advantage': advantage.item(),
-            'num_changed': action_changed.sum().item(),
             'selected_stations': selected_stations.cpu().numpy()
         }
     
-    def train_episode(self, simulator, simulator_steps, num_design_steps=1):
+    def train_episode(self, simulator:MapEnv, simulator_steps, num_design_steps=1):
         """
         Train for one episode
         
@@ -395,15 +435,15 @@ class A2CTrainer:
         # Initialize with first vertiport from each region if no current selection
         if self.current_selected_vertiports is None:
             self.current_selected_vertiports = []
-            for region_id in sorted(self.graph_builder.airspace.region_dict.keys()):
-                first_vp = self.graph_builder.airspace.region_dict[region_id][0]
+            for region_id in sorted(self.graph_builder.airspace.regions_dict.keys()):
+                first_vp = self.graph_builder.airspace.regions_dict[region_id][0]
                 self.current_selected_vertiports.append(first_vp)
             self.current_selected_indices = self.graph_builder.vertiports_to_indices(
                 self.current_selected_vertiports
             )
             # Current metrics is None only for FIRST episode ever
             # After first episode, we'll have metrics from simulator
-        
+        # step(s) in episode  
         for design_step in range(num_design_steps):
             # Build graph with current selection AND PREVIOUS METRICS
             # This represents the TRUE state: (configuration, observed metrics)
@@ -417,8 +457,6 @@ class A2CTrainer:
                 new_selected_indices, _, _, _, action_changed = self.model(
                     x, edge_index, edge_attr, 
                     self.graph_builder.region_mask,
-                    current_selection=self.current_selected_indices,
-                    training=True
                 )
             
             # Convert to vertiports
@@ -445,6 +483,14 @@ class A2CTrainer:
             
             # Compute reward for this NEW configuration
             reward = self.compute_reward(new_selected_vertiports, simulator_metrics)
+            # CHECKING reward to make sure it makes sense 
+            # print()
+            # print(f'Vertiports: {new_selected_vertiports}')
+            # print()
+            # print(f'Reward from episode{episode} --- step{design_step}: {reward}')
+            # print()
+            # time.sleep(2)
+            # DELETE after checking 
             episode_rewards.append(reward)
             
             # Rebuild graph with NEW selection and NEW metrics
@@ -486,8 +532,9 @@ class A2CTrainer:
         
         return episode_rewards, avg_stats
     
-    def _collect_simulator_metrics(self, simulator):
+    def _collect_simulator_metrics(self, simulator:MapEnv):
         """Collect relevant metrics from simulator"""
+
         metrics = {
             'vertiport_metrics': {},
             'flow_metrics': {},
@@ -522,12 +569,12 @@ if __name__ == "__main__":
     uam_simulator = MapEnv(
         number_of_uav=0,
         num_ORCA_uav=0,
-        number_of_vertiport=10,  # Total candidate vertiports
+        number_of_vertiport=100,  # Total candidate vertiports
         location_name='Austin, Texas, USA',
         airspace_tag_list=[],
         vertiport_tag_list=vertiport_tag_list,
-        max_episode_steps=100,
-        number_of_other_agents_for_model=7,
+        max_episode_steps=100, #TODO: max_step_per_episode
+        number_of_other_agents_observed_for_model=7,
         sleep_time=0,
         seed=70,
         obs_space_str='UAM_UAV',
@@ -539,13 +586,6 @@ if __name__ == "__main__":
         vp_design_problem=True
     )
     
-    # Initialize graph builder
-    graph_builder = VertiportGraphBuilder(
-        airspace=uam_simulator.airspace,
-        node_feature_dim=20,
-        edge_feature_dim=12,
-        connectivity_type='inter_intra'  # or 'full'
-    )
     #! this attribute is NOT initiated - ERROR attr not defined - FIX:  !!
     uam_simulator.set_airspace_vp_design()
     if test_mode:
@@ -553,11 +593,21 @@ if __name__ == "__main__":
         #from list of location, or from centeroid
         print('Vertiport Design problem in test mode')
         uam_simulator.airspace.make_regions_dict_vp_des_test_mode()
+
+        #TODO: print the vertiports(with their location) along with their region number 
+        #TODO: I want to know what are all the vertiports their regions and each vertiports location 
     # OR use region_tags
     else:
         uam_simulator.airspace.make_regions_dict_vp_des('commercial', num_regions=num_regions)
 
-    num_regions = len(uam_simulator.airspace.region_dict)
+    # Initialize graph builder
+    graph_builder = VertiportGraphBuilder(
+        airspace=uam_simulator.airspace,
+        node_feature_dim=20,
+        edge_feature_dim=12,
+        connectivity_type='inter_intra'  # or 'full'
+    )
+    num_regions = len(uam_simulator.airspace.regions_dict)
     
     # Initialize model
     rl_model = StationSelectionGNNRL(
@@ -579,14 +629,14 @@ if __name__ == "__main__":
     )
     
     # Training loop
-    num_episodes = 100
+    num_episodes = 10
     for episode in range(num_episodes):
         print(f"\n=== Episode {episode} ===")
         
         rewards, stats = trainer.train_episode(
             simulator=uam_simulator,
-            simulator_steps=100,
-            num_design_steps=1  # Number of design iterations per episode
+            simulator_steps=3,
+            num_design_steps=30  # Number of design iterations per episode
         )
         
         print(f"Episode {episode} Summary:")
@@ -594,6 +644,9 @@ if __name__ == "__main__":
         print(f"  Value Estimate: {stats['value_estimate']:.3f}")
         print(f"  Advantage: {stats['advantage']:.3f}")
         print(f"  Loss: {stats['loss']:.3f}")
+    
+    print(f'TRAINING COMPLETE: vertiport list: {uam_simulator.airspace.vertiport_list}')
+    time.sleep(5)
     
     print("\n=== Training Complete ===")
     
@@ -619,3 +672,4 @@ if __name__ == "__main__":
     for i, vp in enumerate(selected_vertiports):
         print(f"  Region {i}: {vp} at ({vp.location.x:.2f}, {vp.location.y:.2f})")
     print(f"Expected Value: {value:.3f}")
+    
