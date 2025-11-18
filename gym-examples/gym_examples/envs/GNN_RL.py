@@ -88,13 +88,16 @@ class PolicyNetwork(nn.Module):
     - NO ACTION is implemented as a learnable embedding
     """
     
-    def __init__(self, hidden_dim=128, num_regions=None):
+    def __init__(self, hidden_dim=128, num_regions=None,  shared_no_action = True):
         """
         Args:
             hidden_dim (int): Dimension of node embeddings
             num_regions (int): Number of regions
         """
         super(PolicyNetwork, self).__init__()
+        
+        self.shared_no_action = shared_no_action
+        self.no_action_region_mask = torch.zeros(num_regions, hidden_dim)
         
         self.num_regions = num_regions
         
@@ -109,9 +112,10 @@ class PolicyNetwork(nn.Module):
         
         # NO ACTION learnable embedding
         # This allows the model to learn when NOT to change selection
-        #! A big question and I think this should be experimented to understand the actual impact
-        #! of having one shared no_action_embd/logit VS no_action_embd/logit for each region
-        self.no_action_embedding = nn.Parameter(torch.randn(hidden_dim))
+        if self.shared_no_action:
+            self.no_action_embedding = nn.Parameter(torch.randn(hidden_dim))
+        else:
+            self.no_action_embedding = nn.Parameter(torch.randn(num_regions, hidden_dim))
         
     def forward(self, node_embeddings, region_mask, current_selection=None, training=True):
         """
@@ -132,9 +136,13 @@ class PolicyNetwork(nn.Module):
         """
         # Compute logits for each station
         station_logits = self.policy_mlp(node_embeddings).squeeze(-1)  # [num_nodes]
-        
-        # NO ACTION logit (computed from no_action_embedding)
-        no_action_logit = self.policy_mlp(self.no_action_embedding.unsqueeze(0)).squeeze() #scalar number
+        if self.shared_no_action: 
+            # NO ACTION logit (computed from no_action_embedding)
+            no_action_logit = self.policy_mlp(self.no_action_embedding.unsqueeze(0)).squeeze() #scalar number
+        else: 
+            no_action_logit = self.policy_mlp(self.no_action_embedding).squeeze(-1)  # [num_regions]
+
+
         
         action_probs_list = []
         log_probs_list = []
@@ -149,9 +157,10 @@ class PolicyNetwork(nn.Module):
             
             # Add NO ACTION as an option
             # Combined logits: [num_stations_in_region + 1]
-            #! why is the same no_action_logit being used for determining combined logit
-            #! THIS goes to a observation made earlier
-            combined_logits = torch.cat([region_station_logits, no_action_logit.unsqueeze(0)])
+            if self.shared_no_action:
+                combined_logits = torch.cat([region_station_logits, no_action_logit.unsqueeze(0)])
+            else:
+                combined_logits = torch.cat([region_station_logits, no_action_logit[region_idx].unsqueeze(0)])
             
             # Softmax over all options (including NO ACTION)
             region_probs = F.softmax(combined_logits, dim=0)
@@ -286,7 +295,7 @@ class StationSelectionGNNRL(nn.Module):
     """
     
     def __init__(self, node_features, edge_features, hidden_dim=128, 
-                 num_regions=None, num_gnn_layers=3):
+                 num_regions=None, num_gnn_layers=3, shared_no_action=True):
         """
         Args:
             node_features (int): Number of node features
@@ -298,7 +307,7 @@ class StationSelectionGNNRL(nn.Module):
         super(StationSelectionGNNRL, self).__init__()
         
         self.gnn = StationGNN(node_features, edge_features, hidden_dim, num_gnn_layers)
-        self.policy = PolicyNetwork(hidden_dim, num_regions)
+        self.policy = PolicyNetwork(hidden_dim, num_regions,shared_no_action=shared_no_action)
         self.value = ValueNetwork(hidden_dim)
         
     def forward(self, x, edge_index, edge_attr, region_mask, current_selection=None, 
