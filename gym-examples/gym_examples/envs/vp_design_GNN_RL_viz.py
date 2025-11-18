@@ -95,6 +95,8 @@ class MetricsTracker:
         self.episode_metrics['avg_loss'].append(stats['loss'])
         self.episode_metrics['avg_value'].append(stats['value_estimate'])
         self.episode_metrics['avg_advantage'].append(stats['advantage'])
+        self.episode_metrics['avg_policy_loss'].append(stats['avg_policy_loss'])
+        self.episode_metrics['avg_value_loss'].append(stats['avg_value_loss'])
         
         # Additional episode metrics
         if 'total_distance' in stats:
@@ -964,6 +966,7 @@ class A2CTrainer:
         
         # Log to metrics tracker
         if self.metrics_tracker:
+            #                                   episode, episode_rewards, stats,     design_step_data
             self.metrics_tracker.log_episode(episode_num, episode_rewards, avg_stats, episode_stats)
         
         return episode_rewards, avg_stats
@@ -1043,7 +1046,8 @@ if __name__ == "__main__":
         edge_features=6,
         hidden_dim=16,
         num_regions=num_regions,
-        num_gnn_layers=1
+        num_gnn_layers=1,
+        shared_no_action=False
     )
     
     # ===== NEW: Initialize metrics tracker =====
