@@ -356,18 +356,18 @@ class Airspace: #                                                               
             loc_list.append((float(_loc_x), float(_loc_y)))
         return loc_list
 
-    def make_regions_dict_vp_des_test_mode(self) -> None:
+    def make_regions_dict_vp_des_test_mode(self, map_centeroid_to_region_center=5000, region_center_to_vp=1000) -> None:
         '''In test_mode from a given center location we are making 4 regions at the vertices of square centered at point. 
         With each vertex as new center of region we are making four vertiports around that center again. 
         This gives us 4 regions with 4 vertiports each in each region. '''
         self.regions_dict = {}
         centeroid = self.location_utm_gdf.centroid
         center = (centeroid.x, centeroid.y)
-        region_center_list = self.build_pattern(center, 5000)
+        region_center_list = self.build_pattern(center, map_centeroid_to_region_center)
         region = 0
         for region_center in region_center_list:
             _vertiport_list = []
-            vertiport_centers_list = self.build_pattern(region_center, 1000)
+            vertiport_centers_list = self.build_pattern(region_center, region_center_to_vp)
             for i,vertiport_center in enumerate(vertiport_centers_list):
                 _vp = Vertiport(Point(vertiport_center[0], vertiport_center[1]))
                 _vp.region = region
@@ -469,13 +469,13 @@ class Airspace: #                                                               
     #     return region_vertiport_dict
 if __name__ == '__main__':
     airspace = Airspace(1, "Austin, Texas, USA", airspace_tag_list=[], vertiport_tag_list=[]) #('building', 'commercial')
-    
+    fig, ax = plt.subplots()
     # airspace.create_vertiports_from_regions('commercial', num_regions=5, n_sample_from_region=2)
     # for vertiport in airspace.get_vertiport_list():
     #     print(vertiport)
     #     print(vertiport.region)
 
-    airspace.make_regions_dict_vp_des_test_mode()
+    airspace.make_regions_dict_vp_des_test_mode(map_centeroid_to_region_center=2*(32_000_000**0.5), region_center_to_vp=32_000_000**0.5)
     print(airspace.regions_dict)
     x_arr = []
     y_arr = []
@@ -483,10 +483,10 @@ if __name__ == '__main__':
         for vp in vp_list:
             x_arr.append(vp.x)
             y_arr.append(vp.y)
-    plt.scatter(x_arr,y_arr)
+    ax.scatter(x_arr,y_arr)
     for x, y in zip(x_arr, y_arr):
         plt.annotate(f'({x:.2f}, {y:.2f})', (x, y), textcoords='offset points', xytext=(4, 4), fontsize=8)
-    plt.show()
+    fig.savefig('airspace_vp_design_test_locations.png')
 
     print(airspace.num_regions)
     # random_vp = Vertiport(Point(12,13))
