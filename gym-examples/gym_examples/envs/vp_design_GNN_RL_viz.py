@@ -1034,7 +1034,7 @@ if __name__ == "__main__":
     
     if test_mode:
         print('Vertiport Design problem in test mode')
-        uam_simulator.airspace.make_regions_dict_vp_des_test_mode()
+        uam_simulator.airspace.make_regions_dict_vp_des_test_mode(map_centeroid_to_region_center=2*(32_000_000**0.5), region_center_to_vp=32_000_000**0.5)
     else:
         uam_simulator.airspace.make_regions_dict_vp_des('commercial', num_regions=num_regions)
 
@@ -1043,7 +1043,7 @@ if __name__ == "__main__":
         airspace=uam_simulator.airspace,
         node_feature_dim=7, # x,y, 1,1,1,1,region_id
         edge_feature_dim=6,
-        connectivity_type='inter_intra'
+        connectivity_type='full' # option1: inter_intra
     )
     num_regions = len(uam_simulator.airspace.regions_dict)
     
@@ -1080,7 +1080,7 @@ if __name__ == "__main__":
     )
     
     # Training loop
-    num_episodes = 300
+    num_episodes = 500
     print("\n" + "="*70)
     print("STARTING TRAINING WITH COMPREHENSIVE VISUALIZATION")
     print("="*70)
@@ -1095,7 +1095,7 @@ if __name__ == "__main__":
         rewards, stats = trainer.train_episode(
             simulator=uam_simulator,
             simulator_steps=3,
-            num_design_steps=30,
+            num_design_steps=50,
             episode_num=episode
         )
         
