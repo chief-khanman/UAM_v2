@@ -25,7 +25,7 @@ class MetricsTracker:
     """
     Tracks and visualizes all training metrics
     """
-    def __init__(self, save_dir='./GNN_RL_training_results', use_tensorboard=True):
+    def __init__(self, hidden_dim, shared_no_action, save_dir='./GNN_RL_training_results', use_tensorboard=True):
         """
         Args:
             save_dir: Directory to save plots and logs
@@ -33,7 +33,12 @@ class MetricsTracker:
         """
         self.save_dir = save_dir
         os.makedirs(save_dir, exist_ok=True)
-        
+
+        #hidden dim current experiment
+        self.hidden_dim = hidden_dim
+        #shared_action bool current experiment 
+        self.shared_no_action = shared_no_action
+
         # Episode-level metrics
         self.episode_metrics = defaultdict(list)
         
@@ -153,7 +158,7 @@ class MetricsTracker:
             return
         
         episodes = self.episode_metrics['episode']
-        
+        self.fig.suptitle(f'Training- hidden dim:{self.hidden_dim}, shared_no_action:{self.shared_no_action} total_eps: {self.episode_metrics["episode"][-1]} steps_per_ep:{len(self.step_metrics)}')
         # Clear all axes
         for ax in self.axes.values():
             ax.clear()
@@ -261,6 +266,7 @@ class MetricsTracker:
         """Save detailed individual plots"""
         # Rewards over steps
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        fig.suptitle(f'Training- hidden dim:{self.hidden_dim}, shared_no_action:{self.shared_no_action} total_eps: {self.episode_metrics["episode"][-1]} steps_per_ep:{len(self.step_metrics)}')
         
         # Step-level rewards
         if len(self.step_metrics['reward']) > 0:
@@ -307,6 +313,7 @@ class MetricsTracker:
     def _save_summary_dashboard(self, timestamp):
         """Create and save comprehensive summary dashboard"""
         fig = plt.figure(figsize=(20, 12))
+        fig.suptitle(f'Training- hidden dim:{self.hidden_dim}, shared_no_action:{self.shared_no_action} total_eps: {self.episode_metrics["episode"][-1]} steps_per_ep:{len(self.step_metrics)}')
         gs = GridSpec(3, 4, figure=fig, hspace=0.3, wspace=0.3)
         
         episodes = self.episode_metrics['episode']
@@ -1040,18 +1047,23 @@ if __name__ == "__main__":
     )
     num_regions = len(uam_simulator.airspace.regions_dict)
     
+    HIDDEN_DIM = 32
+    SHARED_NO_ACTION = True
+
     # Initialize model
     rl_model = StationSelectionGNNRL(
         node_features=7,
         edge_features=6,
-        hidden_dim=16,
+        hidden_dim=HIDDEN_DIM,
         num_regions=num_regions,
         num_gnn_layers=1,
-        shared_no_action=False
+        shared_no_action=SHARED_NO_ACTION
     )
     
     # ===== NEW: Initialize metrics tracker =====
     metrics_tracker = MetricsTracker(
+        hidden_dim=HIDDEN_DIM,
+        shared_no_action=SHARED_NO_ACTION,
         save_dir='./training_results',
         use_tensorboard=False  # Set to False to disable TensorBoard
     )
