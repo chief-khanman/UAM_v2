@@ -829,11 +829,11 @@ class MapEnv(gym.Env):
         #TODO: UPDATE HOW VERTIPORTS ARE CREATED 
         # Create vertiports
         #TODO: this line will cut vertiports and reduce them to 10 from 16 
-        print(f'Before minimizing vertiports: {self.number_of_vertiport}')
+        #print(f'Before minimizing vertiports: {self.number_of_vertiport}')
         num_vertiports = min(self.max_vertiports, self.number_of_vertiport)  # Use a reasonable number
         #! LETS print and make sure we are actually using all the vertiports from the vertiport/region builder 
         #! THERE should be 16 vertiports 4 regions 
-        print(num_vertiports)
+        #print(num_vertiports)
         #! WHY is this variable not used
 
 
