@@ -463,7 +463,8 @@ class VertiportGraphBuilder:
     """
     Builds and manages graph representations of vertiport configurations
     """
-    def __init__(self, airspace, node_feature_dim=7, edge_feature_dim=6, 
+    # updated node feature dimension to 8 (includes selected vertiports as a feature)
+    def __init__(self, airspace, node_feature_dim=8, edge_feature_dim=6, 
                  connectivity_type='inter_intra'):
         """
         Args:
@@ -496,7 +497,7 @@ class VertiportGraphBuilder:
     
     def _build_region_mask(self):
         """
-        Create region mask [num_regions, num_vertiports]
+        Create region mask [num_regions, (total)num_vertiports]
         mask[i, j] = 1 if vertiport j belongs to region i
         """
         num_regions = len(self.airspace.regions_dict)
@@ -528,10 +529,11 @@ class VertiportGraphBuilder:
             edge_index: Edge connectivity [2, num_edges]
             edge_attr: Edge features [num_edges, edge_feature_dim]
         """
+        #! do we need this variable ??
         num_vertiports = len(self.vertiport_to_idx)
         
         # Build node features
-        x = self._build_node_features(metrics)
+        x = self._build_node_features(selected_vertiports, metrics)
         
         # Build edge connectivity and features
         if self.connectivity_type == 'full':
@@ -542,12 +544,13 @@ class VertiportGraphBuilder:
             )
         
         return x, edge_index, edge_attr
-    
-    def _build_node_features(self, metrics=None):
+    #TODO: Add new feature - binary variable for selected vertiports 
+    def _build_node_features(self, selected_vertiports, metrics=None):
         """
         Build node features for each vertiport
         
         Features can include:
+        - Selected vertiports
         - Location (x, y normalized)
         - Capacity
         - Current demand/utilization
@@ -560,9 +563,14 @@ class VertiportGraphBuilder:
         for idx, vertiport in self.idx_to_vertiport.items():
             features = []
             
+            if vertiport in selected_vertiports:
+                #                             need to ensure this fits with overall logic
+                features.append(1.0) #F1    # this feature is for indicating vertiport is selected 
+            else:
+                features.append(0.0)
             # Location features (normalized)
-            features.append(vertiport.location.x) #f1
-            features.append(vertiport.location.y) #f2
+            features.append(vertiport.location.x) #F2
+            features.append(vertiport.location.y) #F3
             
             # Add metrics if available
             # metrics is a dict
@@ -574,10 +582,10 @@ class VertiportGraphBuilder:
             if metrics and 'vertiport_metrics' in metrics:
                 vp_metrics = metrics['vertiport_metrics'].get(vertiport, {})
                 features.extend([
-                    vp_metrics.get('demand', 1.0), #f3
-                    vp_metrics.get('utilization', 1.0), #f4
-                    vp_metrics.get('wait_time', 1.0), #f5
-                    vp_metrics.get('throughput', 1.0), #f6
+                    vp_metrics.get('demand', 1.0), #F4
+                    vp_metrics.get('utilization', 1.0), #F5
+                    vp_metrics.get('wait_time', 1.0), #F6
+                    vp_metrics.get('throughput', 1.0), #F7
                 ])
             else:
                 # Default values if no metrics
@@ -585,7 +593,7 @@ class VertiportGraphBuilder:
             
             # Region encoding (one-hot or region id)
             region_id = self._get_region_id(vertiport)
-            features.append(float(region_id)) #f7
+            features.append(float(region_id)) #F8
             
             # Pad to node_feature_dim if needed
             while len(features) < self.node_feature_dim:
@@ -701,11 +709,11 @@ class VertiportGraphBuilder:
                 flow.get('capacity_used', 1.0), #f6
             ])
         else:
-            features.extend([1.0, 1.0])
+            features.extend([1.0, 1.0]) # f5, f6
         
         # Pad to edge_feature_dim
         while len(features) < self.edge_feature_dim:
-            features.append(0.0)
+            features.append(0.0) #f7 ...
         
         return torch.tensor(features[:self.edge_feature_dim], dtype=torch.float32)
     
@@ -812,7 +820,7 @@ class A2CTrainer:
             reward: Reward for current configuration
             current_selection: Currently selected vertiport indices
         """
-        x, edge_index, edge_attr = graph_data
+        x, edge_index, edge_attr = graph_data # new_state, s'
         
         # Forward pass
         selected_stations, log_probs, value, entropy, action_changed = self.model(
@@ -893,12 +901,14 @@ class A2CTrainer:
         # step(s) in episode  
         for design_step in range(num_design_steps):
             # Build graph with current selection AND PREVIOUS METRICS
+            # State, s -> state defined using 'current' airspace metrics 
             x, edge_index, edge_attr = self.graph_builder.build_graph(
                 selected_vertiports=self.current_selected_vertiports,
                 metrics=self.current_metrics
             )
             
             # Model proposes new selection (or keeps current)
+            # Given current state -> returns action (new vertiport selection)
             with torch.no_grad():
                 new_selected_indices, _, _, _, action_changed = self.model(
                     x, edge_index, edge_attr, 
@@ -934,6 +944,7 @@ class A2CTrainer:
             episode_changes.append(action_changed.sum().item())
             
             # Rebuild graph with NEW selection and NEW metrics
+            # NEW STATE, s' -> defined using 'new' airspace metrics
             x_new, edge_index_new, edge_attr_new = self.graph_builder.build_graph(
                 selected_vertiports=new_selected_vertiports,
                 metrics=simulator_metrics
@@ -941,10 +952,10 @@ class A2CTrainer:
             
             # Training step: learn from transition
             stats = self.train_step(
-                (x_new, edge_index_new, edge_attr_new),
+                (x_new, edge_index_new, edge_attr_new), # new_state, s'
                 self.graph_builder.region_mask,
                 reward,
-                self.current_selected_indices
+                new_selected_indices
             )
             episode_stats.append(stats)
             
