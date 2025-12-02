@@ -38,10 +38,17 @@ class StationGNN(nn.Module):
         """
         super(StationGNN, self).__init__()
         
+        #! option 1 
+        #  concatenate the selected_node bool vector to the node_features before node_proj
+        #TODO: add the selected_node boolean vector to node_features
         # Project node and edge features to hidden dimension
         self.node_proj = nn.Linear(node_features, hidden_dim)
         self.edge_proj = nn.Linear(edge_features, hidden_dim)
         
+        #! option 2
+        #  concatenate the selected_node bool vector to the node_proj 
+
+
         # GNN layers (using GAT for attention-based aggregation)
         self.conv_layers = nn.ModuleList([
             GATConv(hidden_dim, hidden_dim, edge_dim=hidden_dim, heads=4, concat=False)
@@ -135,6 +142,9 @@ class PolicyNetwork(nn.Module):
             action_changed (torch.Tensor): Boolean mask of which regions changed [num_regions]
         """
         # Compute logits for each station
+        #! option 3 
+        #  use a skip connection and concatenate the selected_nodes 
+        #TODO: concatenate the selected node boolean vector(skip connection) with node_embedding 
         station_logits = self.policy_mlp(node_embeddings).squeeze(-1)  # [num_nodes]
         if self.shared_no_action: 
             # NO ACTION logit (computed from no_action_embedding)

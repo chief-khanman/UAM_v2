@@ -1080,7 +1080,7 @@ if __name__ == "__main__":
     )
     
     # Training loop
-    num_episodes = 500
+    num_episodes = 750
     print("\n" + "="*70)
     print("STARTING TRAINING WITH COMPREHENSIVE VISUALIZATION")
     print("="*70)
