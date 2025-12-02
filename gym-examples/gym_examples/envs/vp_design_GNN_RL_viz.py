@@ -25,7 +25,7 @@ class MetricsTracker:
     """
     Tracks and visualizes all training metrics
     """
-    def __init__(self, save_dir='./GNN_RL_training_results', use_tensorboard=True):
+    def __init__(self, hidden_dim, shared_no_action, save_dir='./GNN_RL_training_results', use_tensorboard=True):
         """
         Args:
             save_dir: Directory to save plots and logs
@@ -33,7 +33,12 @@ class MetricsTracker:
         """
         self.save_dir = save_dir
         os.makedirs(save_dir, exist_ok=True)
-        
+
+        #hidden dim current experiment
+        self.hidden_dim = hidden_dim
+        #shared_action bool current experiment 
+        self.shared_no_action = shared_no_action
+
         # Episode-level metrics
         self.episode_metrics = defaultdict(list)
         
@@ -153,7 +158,7 @@ class MetricsTracker:
             return
         
         episodes = self.episode_metrics['episode']
-        
+        self.fig.suptitle(f'Training- hidden dim:{self.hidden_dim}, shared_no_action:{self.shared_no_action} total_eps: {self.episode_metrics["episode"][-1]} steps_per_ep:{len(self.step_metrics)}')
         # Clear all axes
         for ax in self.axes.values():
             ax.clear()
@@ -261,6 +266,7 @@ class MetricsTracker:
         """Save detailed individual plots"""
         # Rewards over steps
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        fig.suptitle(f'Training- hidden dim:{self.hidden_dim}, shared_no_action:{self.shared_no_action} total_eps: {self.episode_metrics["episode"][-1]} steps_per_ep:{len(self.step_metrics)}')
         
         # Step-level rewards
         if len(self.step_metrics['reward']) > 0:
@@ -307,6 +313,7 @@ class MetricsTracker:
     def _save_summary_dashboard(self, timestamp):
         """Create and save comprehensive summary dashboard"""
         fig = plt.figure(figsize=(20, 12))
+        fig.suptitle(f'Training- hidden dim:{self.hidden_dim}, shared_no_action:{self.shared_no_action} total_eps: {self.episode_metrics["episode"][-1]} steps_per_ep:{len(self.step_metrics)}')
         gs = GridSpec(3, 4, figure=fig, hspace=0.3, wspace=0.3)
         
         episodes = self.episode_metrics['episode']
@@ -1038,7 +1045,7 @@ if __name__ == "__main__":
     
     if test_mode:
         print('Vertiport Design problem in test mode')
-        uam_simulator.airspace.make_regions_dict_vp_des_test_mode()
+        uam_simulator.airspace.make_regions_dict_vp_des_test_mode(map_centeroid_to_region_center=2*(32_000_000**0.5), region_center_to_vp=32_000_000**0.5)
     else:
         uam_simulator.airspace.make_regions_dict_vp_des('commercial', num_regions=num_regions)
 
@@ -1047,22 +1054,27 @@ if __name__ == "__main__":
         airspace=uam_simulator.airspace,
         node_feature_dim=7, # x,y, 1,1,1,1,region_id
         edge_feature_dim=6,
-        connectivity_type='inter_intra'
+        connectivity_type='full' # option1: inter_intra
     )
     num_regions = len(uam_simulator.airspace.regions_dict)
     
+    HIDDEN_DIM = 32
+    SHARED_NO_ACTION = True
+
     # Initialize model
     rl_model = StationSelectionGNNRL(
         node_features=7,
         edge_features=6,
-        hidden_dim=16,
+        hidden_dim=HIDDEN_DIM,
         num_regions=num_regions,
         num_gnn_layers=1,
-        shared_no_action=False
+        shared_no_action=SHARED_NO_ACTION
     )
     
     # ===== NEW: Initialize metrics tracker =====
     metrics_tracker = MetricsTracker(
+        hidden_dim=HIDDEN_DIM,
+        shared_no_action=SHARED_NO_ACTION,
         save_dir='./training_results',
         use_tensorboard=False  # Set to False to disable TensorBoard
     )
@@ -1079,7 +1091,7 @@ if __name__ == "__main__":
     )
     
     # Training loop
-    num_episodes = 300
+    num_episodes = 500
     print("\n" + "="*70)
     print("STARTING TRAINING WITH COMPREHENSIVE VISUALIZATION")
     print("="*70)
@@ -1094,7 +1106,7 @@ if __name__ == "__main__":
         rewards, stats = trainer.train_episode(
             simulator=uam_simulator,
             simulator_steps=3,
-            num_design_steps=30,
+            num_design_steps=50,
             episode_num=episode
         )
         
