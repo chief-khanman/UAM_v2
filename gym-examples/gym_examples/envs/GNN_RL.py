@@ -178,7 +178,7 @@ class PolicyNetwork(nn.Module):
             # Sample or select action
             dist = torch.distributions.Categorical(region_probs)
             if training:
-                action = dist.sample()
+                action = dist.sample() #action is index associated with categorical distribution
             else:
                 action = torch.argmax(region_probs)
             
@@ -187,7 +187,7 @@ class PolicyNetwork(nn.Module):
             entropy_list.append(dist.entropy())
             
             # Determine selected station
-            region_station_indices = torch.where(mask)[0]
+            region_station_indices = torch.where(mask)[0] # given [0,0,1,1] returns [2,3] location of 1s in the mask
             num_stations_in_region = len(region_station_indices)
             
             # for a given region lets say there are 4 stations
@@ -199,11 +199,12 @@ class PolicyNetwork(nn.Module):
             else:
                 # NO ACTION - keep current selection
                 if current_selection is not None:
-                    selected_station = current_selection[region_idx]
-                else:
-                    # First selection - default to first station in region
-                    #TODO: maybe we can choose a random station to start with 
-                    selected_station = region_station_indices[0]
+                    # current_selection -> current_indices 
+                    selected_station = current_selection[region_idx] #! example: [vp_id_3(region_0), vp_id_5(region_1), vp_id_10(region_2), vp_id_12(region_3)]
+                # else:
+                #     # First selection - default to first station in region
+                #     #TODO: maybe we can choose a random station to start with 
+                #     selected_station = region_station_indices[0]
                 action_changed.append(False)
             
             selected_stations.append(selected_station)
@@ -341,7 +342,7 @@ class StationSelectionGNNRL(nn.Module):
             entropy (torch.Tensor): Entropy for exploration bonus
             action_changed (torch.Tensor): Which regions changed selection [num_regions]
         """
-        # GNN embedding
+        # GNN embedding - only NODE and EDGE features - STATE/OBS 
         node_embeddings = self.gnn(x, edge_index, edge_attr, batch)
         
         # Policy: Select stations (or NO ACTION)
