@@ -955,7 +955,7 @@ class A2CTrainer:
                 (x_new, edge_index_new, edge_attr_new), # new_state, s'
                 self.graph_builder.region_mask,
                 reward,
-                new_selected_indices
+                self.current_selected_indices
             )
             episode_stats.append(stats)
             
@@ -1052,18 +1052,18 @@ if __name__ == "__main__":
     # Initialize graph builder
     graph_builder = VertiportGraphBuilder(
         airspace=uam_simulator.airspace,
-        node_feature_dim=7, # x,y, 1,1,1,1,region_id
+        node_feature_dim=8, # x,y, 1,1,1,1,region_id
         edge_feature_dim=6,
         connectivity_type='full' # option1: inter_intra
     )
     num_regions = len(uam_simulator.airspace.regions_dict)
     
-    HIDDEN_DIM = 32
-    SHARED_NO_ACTION = True
+    HIDDEN_DIM = 16
+    SHARED_NO_ACTION = False
 
     # Initialize model
     rl_model = StationSelectionGNNRL(
-        node_features=7,
+        node_features=8,
         edge_features=6,
         hidden_dim=HIDDEN_DIM,
         num_regions=num_regions,
@@ -1091,7 +1091,7 @@ if __name__ == "__main__":
     )
     
     # Training loop
-    num_episodes = 750
+    num_episodes = 500
     print("\n" + "="*70)
     print("STARTING TRAINING WITH COMPREHENSIVE VISUALIZATION")
     print("="*70)
