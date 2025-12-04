@@ -40,7 +40,6 @@ class StationGNN(nn.Module):
         
         #! option 1 
         #  concatenate the selected_node bool vector to the node_features before node_proj
-        #TODO: add the selected_node boolean vector to node_features
         # Project node and edge features to hidden dimension
         self.node_proj = nn.Linear(node_features, hidden_dim)
         self.edge_proj = nn.Linear(edge_features, hidden_dim)
@@ -100,6 +99,7 @@ class PolicyNetwork(nn.Module):
         Args:
             hidden_dim (int): Dimension of node embeddings
             num_regions (int): Number of regions
+            shared_no_action (bool): Boolean toggle for shared no_action probability 
         """
         super(PolicyNetwork, self).__init__()
         
@@ -170,7 +170,7 @@ class PolicyNetwork(nn.Module):
             if self.shared_no_action:
                 combined_logits = torch.cat([region_station_logits, no_action_logit.unsqueeze(0)])
             else:
-                combined_logits = torch.cat([region_station_logits, no_action_logit[region_idx].unsqueeze(0)])
+                combined_logits = torch.cat([region_station_logits, no_action_logit[region_idx].unsqueeze(0)]) #! should I select the no_action_logit by indexing into it OR should I use the station_mask to select no_action
             
             # Softmax over all options (including NO ACTION)
             region_probs = F.softmax(combined_logits, dim=0)
@@ -247,7 +247,7 @@ class ValueNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim // 2, 1)  # Single scalar value
         )
-        
+    #                 state,           action   
     def forward(self, node_embeddings, selected_stations):
         """
         Forward pass to estimate value.
@@ -346,7 +346,7 @@ class StationSelectionGNNRL(nn.Module):
         
         # Policy: Select stations (or NO ACTION)
         selected_stations, log_probs, entropy, action_changed = self.policy(
-            node_embeddings, region_mask, current_selection, training
+            node_embeddings, region_mask, current_selection, training #! does policy take into account current_selection ??
         )
         
         # Value: Estimate configuration quality
