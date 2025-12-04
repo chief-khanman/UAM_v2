@@ -464,7 +464,7 @@ class VertiportGraphBuilder:
     Builds and manages graph representations of vertiport configurations
     """
     # updated node feature dimension to 8 (includes selected vertiports as a feature)
-    def __init__(self, airspace, node_feature_dim=8, edge_feature_dim=6, 
+    def __init__(self, airspace, node_feature_dim=8, edge_feature_dim=7, 
                  connectivity_type='inter_intra'):
         """
         Args:
@@ -537,7 +537,7 @@ class VertiportGraphBuilder:
         
         # Build edge connectivity and features
         if self.connectivity_type == 'full':
-            edge_index, edge_attr = self._build_fully_connected_graph(metrics)
+            edge_index, edge_attr = self._build_fully_connected_graph(metrics, selected_vertiports)
         else:  # 'inter_intra'
             edge_index, edge_attr = self._build_inter_intra_graph(
                 selected_vertiports, metrics
@@ -611,7 +611,7 @@ class VertiportGraphBuilder:
         return -1
     
     
-    def _build_fully_connected_graph(self, metrics=None):
+    def _build_fully_connected_graph(self, metrics=None, selected_vertiports=None):
         """Build fully connected graph"""
         num_vertiports = len(self.vertiport_to_idx)
         edges = []
@@ -623,7 +623,7 @@ class VertiportGraphBuilder:
                     edges.append([i, j])
                     vp_i = self.idx_to_vertiport[i]
                     vp_j = self.idx_to_vertiport[j]
-                    edge_attr = self._compute_edge_features(vp_i, vp_j, 'full', metrics)
+                    edge_attr = self._compute_edge_features(vp_i, vp_j, 'full', metrics, selected_vertiports)
                     edge_attrs.append(edge_attr)
         
         edge_index = torch.tensor(edges, dtype=torch.long).t()
@@ -678,7 +678,7 @@ class VertiportGraphBuilder:
         
         return edge_index, edge_attr
     
-    def _compute_edge_features(self, vp_i, vp_j, edge_type, metrics=None):
+    def _compute_edge_features(self, vp_i, vp_j, edge_type, metrics=None, selected_vertiports=None):
         """
         Compute edge features between two vertiports
         
@@ -686,6 +686,7 @@ class VertiportGraphBuilder:
         - Distance
         - Edge type (inter/intra/full)
         - Flow metrics if available
+        - For a selected pair of vertiports activate boolean edge feature
         """
         features = []
         
@@ -710,10 +711,16 @@ class VertiportGraphBuilder:
             ])
         else:
             features.extend([1.0, 1.0]) # f5, f6
+
+        # IF vp_i and vp_j belong to the selected_vertiports list boolean feature is 1 else 0 
+        if (vp_i in selected_vertiports) and (vp_j in selected_vertiports):
+            features.append(1.0) #f7
+        else:
+            features.append(0.0) #f7
         
         # Pad to edge_feature_dim
         while len(features) < self.edge_feature_dim:
-            features.append(0.0) #f7 ...
+            features.append(0.0) #f8 ...
         
         return torch.tensor(features[:self.edge_feature_dim], dtype=torch.float32)
     
@@ -771,27 +778,27 @@ class A2CTrainer:
                     total_distance += distance
         
         #REWARD trick - 
-        best_vertiports = [(623157.,3355240.), (617501., 3355240.), (617501., 3349584.), (623157.,3349584.)]
-        best_count = 0
-        print('checking for best vp comb')
-        for vertiport in selected_vertiports:
-            # print('inside check')
-            # time.sleep(1)
-            temp_xy = (vertiport.x, vertiport.y)
-            # print(f'Temp vp tuple: {temp_xy}')
-            if temp_xy in best_vertiports:
-                best_count+=1
-                # print(f'current best_count {best_count}')
-        if best_count == 4:
-            distance_reward = 1000000
-            time.sleep(3)
-            print('Found best arrangement')
-            return distance_reward, total_distance
-            # print('FOUND BEST vp arrangement')
-            # time.sleep(3)
-        else:
-            # Reward is negative distance (we want to minimize total distance)
-            distance_reward = -total_distance
+        # best_vertiports = [(623157.,3355240.), (617501., 3355240.), (617501., 3349584.), (623157.,3349584.)]
+        # best_count = 0
+        # print('checking for best vp comb')
+        # for vertiport in selected_vertiports:
+        #     # print('inside check')
+        #     # time.sleep(1)
+        #     temp_xy = (vertiport.x, vertiport.y)
+        #     # print(f'Temp vp tuple: {temp_xy}')
+        #     if temp_xy in best_vertiports:
+        #         best_count+=1
+        #         # print(f'current best_count {best_count}')
+        # if best_count == 4:
+        #     distance_reward = 1000000
+        #     time.sleep(3)
+        #     print('Found best arrangement')
+        #     return distance_reward, total_distance
+        #     # print('FOUND BEST vp arrangement')
+        #     # time.sleep(3)
+        # else:
+        #     # Reward is negative distance (we want to minimize total distance)
+        #     distance_reward = -total_distance
 
         
         
@@ -804,9 +811,9 @@ class A2CTrainer:
                 simulator_metrics.get('avg_delay', 0.0) * 3.0
             )
             # Weighted combination
-            reward = distance_reward # 0.3 * distance_reward + 0.7 * sim_reward
+            reward = total_distance # 0.3 * distance_reward + 0.7 * sim_reward
         else:
-            reward = distance_reward
+            reward = total_distance
         
         return reward, total_distance  # Return both for tracking
     
@@ -831,13 +838,13 @@ class A2CTrainer:
         
         # Compute advantage
         reward_tensor = torch.tensor(reward, dtype=torch.float32)
-        advantage = reward_tensor - value.detach()
+        advantage = reward_tensor - value.detach() #! why is advantage reward - value
         
         # Policy loss (Actor)
         policy_loss = -(log_probs * advantage)
         
         # Value loss (Critic)
-        value_loss = F.mse_loss(value, reward_tensor)
+        value_loss = F.mse_loss(value, reward_tensor) #! is this correct 
         
         # Entropy bonus (for exploration)
         entropy_loss = -entropy
@@ -901,7 +908,7 @@ class A2CTrainer:
         # step(s) in episode  
         for design_step in range(num_design_steps):
             # Build graph with current selection AND PREVIOUS METRICS
-            # State, s -> state defined using 'current' airspace metrics 
+            # STATE, s -> state defined using 'current' airspace metrics 
             x, edge_index, edge_attr = self.graph_builder.build_graph(
                 selected_vertiports=self.current_selected_vertiports,
                 metrics=self.current_metrics
@@ -909,6 +916,7 @@ class A2CTrainer:
             
             # Model proposes new selection (or keeps current)
             # Given current state -> returns action (new vertiport selection)
+            # ACTION
             with torch.no_grad():
                 new_selected_indices, _, _, _, action_changed = self.model(
                     x, edge_index, edge_attr, 
@@ -937,6 +945,7 @@ class A2CTrainer:
             simulator_metrics = self._collect_simulator_metrics(simulator)
             
             # Compute reward for this NEW configuration
+            # REWARD 
             reward, total_distance = self.compute_reward(new_selected_vertiports, simulator_metrics)
             
             episode_rewards.append(reward)
@@ -952,10 +961,12 @@ class A2CTrainer:
             
             # Training step: learn from transition
             stats = self.train_step(
-                (x_new, edge_index_new, edge_attr_new), # new_state, s'
+                #! should this be new_state OR old_state
+                # TRYING: changing x_new, edge_index_new, edge_attr_new TO x, edge_index, edge_attr
+                (x, edge_index, edge_attr), # new_state, s' OR state, s
                 self.graph_builder.region_mask,
                 reward,
-                self.current_selected_indices
+                self.current_selected_indices # new_selected_indices
             )
             episode_stats.append(stats)
             
