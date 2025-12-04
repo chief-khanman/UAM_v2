@@ -68,22 +68,26 @@ if __name__ == '__main__':
     # vp3 = Vertiport(Point(16,17))
     # vp4 = Vertiport(Point(21,31))
 
-    vp1 = Vertiport(Point(10.,10.))
-    vp2 = Vertiport(Point(11.,11.))
-    vp3 = Vertiport(Point(12.,12.))
-    vp4 = Vertiport(Point(13.,13.))
+    # vp1 = Vertiport(Point(10.,10.))
+    # vp2 = Vertiport(Point(11.,11.))
+    # vp3 = Vertiport(Point(12.,12.))
+    # vp4 = Vertiport(Point(13.,13.))
 
 
 
-    vp_list = [vp1, vp2, vp3, vp4]
+    # vp_list = [vp1, vp2, vp3, vp4]
 
-    best_locations = [(10,10), (11,11), (12,12), (13,13)]
-    best_count = 0
-    for _vp in vp_list:
-        tempxy = (_vp.x, _vp.y)
-        if tempxy in best_locations:
-            best_count +=1
-    if best_count == 4:
-        print('Found best')
-    else:
-        print('Found nothing')
+    # best_locations = [(10,10), (11,11), (12,12), (13,13)]
+    # best_count = 0
+    # for _vp in vp_list:
+    #     tempxy = (_vp.x, _vp.y)
+    #     if tempxy in best_locations:
+    #         best_count +=1
+    # if best_count == 4:
+    #     print('Found best')
+    # else:
+    #     print('Found nothing')
+
+    vp1 = Vertiport(Point(608328, 3364411))
+    vp2 = Vertiport(Point(632328, 3364411))
+    print(f'Distance: {vp1.location.distance(vp2.location)}')
