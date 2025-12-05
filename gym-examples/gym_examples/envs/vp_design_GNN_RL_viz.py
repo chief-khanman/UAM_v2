@@ -942,11 +942,12 @@ class A2CTrainer:
                     break
             
             # Collect metrics from simulator
+            # new_state, s'
             simulator_metrics = self._collect_simulator_metrics(simulator)
             
             # Compute reward for this NEW configuration
             # REWARD 
-            reward, total_distance = self.compute_reward(new_selected_vertiports, simulator_metrics)
+            reward, total_distance = self.compute_reward(self.current_selected_vertiports, self.current_metrics)
             
             episode_rewards.append(reward)
             episode_distances.append(total_distance)
@@ -971,9 +972,9 @@ class A2CTrainer:
             episode_stats.append(stats)
             
             # Update current state for NEXT episode/step
-            self.current_selected_vertiports = new_selected_vertiports
-            self.current_selected_indices = new_selected_indices
-            self.current_metrics = simulator_metrics
+            self.current_selected_vertiports = new_selected_vertiports #action
+            self.current_selected_indices = new_selected_indices #action
+            self.current_metrics = simulator_metrics # new_state, S'
             
             print(f"  Design step {design_step}: "
                   f"Reward={reward:.3f}, "
