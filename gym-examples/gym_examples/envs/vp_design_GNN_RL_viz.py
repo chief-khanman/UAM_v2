@@ -811,9 +811,9 @@ class A2CTrainer:
                 simulator_metrics.get('avg_delay', 0.0) * 3.0
             )
             # Weighted combination
-            reward = total_distance # 0.3 * distance_reward + 0.7 * sim_reward
+            reward = -total_distance # 0.3 * distance_reward + 0.7 * sim_reward
         else:
-            reward = total_distance
+            reward = -total_distance
         
         return reward, total_distance  # Return both for tracking
     
@@ -838,19 +838,19 @@ class A2CTrainer:
         
         # Compute advantage
         reward_tensor = torch.tensor(reward, dtype=torch.float32)
-        advantage = reward_tensor - value.detach() #! why is advantage reward - value
+        advantage = reward_tensor - value.detach() #! why is advantage reward - value, should this be one step TD, reward + value(s') - value(s)
         
         # Policy loss (Actor)
-        policy_loss = -(log_probs * advantage)
+        policy_loss = -(log_probs * advantage) # def: alpha * grad(log(prob_action)) * adv -> should this be the policy loss
         
         # Value loss (Critic)
-        value_loss = F.mse_loss(value, reward_tensor) #! is this correct 
+        value_loss = F.mse_loss(value, reward_tensor) #! is this correct - should this be one step TD error as well -  value(s), reward + value(s')
         
         # Entropy bonus (for exploration)
         entropy_loss = -entropy
         
         # Combined loss
-        loss = (policy_loss + 
+        loss = (policy_loss + #where is the alpha for the policy loss 
                 self.value_coef * value_loss + 
                 self.entropy_coef * entropy_loss)
         
@@ -921,6 +921,7 @@ class A2CTrainer:
                 new_selected_indices, _, _, _, action_changed = self.model(
                     x, edge_index, edge_attr, 
                     self.graph_builder.region_mask,
+                    self.current_selected_indices
                 )
             
             # Convert to vertiports
@@ -1103,7 +1104,7 @@ if __name__ == "__main__":
     )
     
     # Training loop
-    num_episodes = 500
+    num_episodes = 5000
     print("\n" + "="*70)
     print("STARTING TRAINING WITH COMPREHENSIVE VISUALIZATION")
     print("="*70)
