@@ -823,7 +823,7 @@ class A2CTrainer:
         
         return reward, total_distance  # Return both for tracking
     
-    def train_step(self, new_graph_data, current_value, current_log_prob, current_entropy, region_mask, reward, new_selection, new_selected_vertiports):
+    def train_step(self, new_graph_data, current_value, current_log_prob, current_entropy, region_mask, reward, new_selection, new_selected_vertiports,action_changed, is_terminal):
         """
         Single training step
         
@@ -842,17 +842,28 @@ class A2CTrainer:
         # Forward pass
         # selected_station == a''
         #! should the entropy be of the new_state, OR the old_state
-        selected_stations, log_probs, new_value, entropy, action_changed = self.model(
-            x, edge_index, edge_attr, region_mask, 
-            current_selection=new_selection,
-            training=True
-        )
+        # selected_stations, log_probs, new_value, entropy, action_changed = self.model(
+        #     x, edge_index, edge_attr, region_mask, 
+        #     current_selection=new_selection,
+        #     training=True
+        # )
+
+        with torch.no_grad():
+            new_value = self.model.get_value(x, edge_index, edge_attr, new_selection)
+        
+        
+        reward_tensor = torch.tensor(reward, dtype=torch.float32)
+        
+        if is_terminal:
+            td_target = reward_tensor
+        else:
+            td_target = reward_tensor + self.gamma * new_value
+
         
         # Compute advantage
-        reward_tensor = torch.tensor(reward, dtype=torch.float32)
         #advantage = reward_tensor - value.detach() 
         #! why is advantage reward - value, should this be one step TD, reward + gamma*value(s') - value(s)
-        advantage = reward_tensor + (self.gamma * new_value.detach()) - current_value
+        advantage =td_target - current_value.detach()
         
         # Policy loss (Actor)
         policy_loss = -(current_log_prob * advantage) # def: alpha * grad(log(prob_action)) * adv -> should this be the policy loss
@@ -860,7 +871,7 @@ class A2CTrainer:
         # Value loss (Critic)
         #value_loss = F.mse_loss(value, reward_tensor) 
         #! is this correct - should this be one step TD error as well -  value(s), reward + gamma*value(s')
-        value_loss = F.mse_loss(current_value, reward_tensor+self.gamma*new_value.detach())
+        value_loss = F.mse_loss(current_value, td_target)
         
         # Entropy bonus (for exploration)
         entropy_loss = -current_entropy
@@ -934,12 +945,12 @@ class A2CTrainer:
             # Model proposes new selection (or keeps current)
             # Given current state -> returns action (new vertiport selection)
             #! ACTION
-            with torch.no_grad():
-                new_selected_indices, current_log_prob, current_value, current_entropy, action_changed = self.model(
-                    x, edge_index, edge_attr, 
-                    self.graph_builder.region_mask,
-                    self.current_selected_indices
-                )
+            # with torch.no_grad():
+            new_selected_indices, current_log_prob, current_value, current_entropy, action_changed = self.model(
+                x, edge_index, edge_attr, 
+                self.graph_builder.region_mask,
+                self.current_selected_indices
+            )
             #! ACTION
             # Convert to vertiports
             new_selected_vertiports = self.graph_builder.indices_to_vertiports(
@@ -978,6 +989,11 @@ class A2CTrainer:
                 metrics=simulator_metrics
             )
             
+            if design_step == num_design_steps-1:
+                is_terminal = True
+            else:
+                is_terminal = False
+
             # Training step: learn from transition
             stats = self.train_step(
                 (x_new, edge_index_new, edge_attr_new), #new_state - need for new_value
@@ -987,7 +1003,9 @@ class A2CTrainer:
                 self.graph_builder.region_mask,
                 reward,
                 new_selected_indices, # new_selected_indices - need for new_value
-                new_selected_vertiports
+                new_selected_vertiports,
+                action_changed,
+                is_terminal
             )
             episode_stats.append(stats)
             
@@ -1085,7 +1103,7 @@ if __name__ == "__main__":
     graph_builder = VertiportGraphBuilder(
         airspace=uam_simulator.airspace,
         node_feature_dim=8, # x,y, 1,1,1,1,region_id
-        edge_feature_dim=6,
+        edge_feature_dim=7,
         connectivity_type='full' # option1: inter_intra
     )
     num_regions = len(uam_simulator.airspace.regions_dict)
@@ -1096,7 +1114,7 @@ if __name__ == "__main__":
     # Initialize model
     rl_model = StationSelectionGNNRL(
         node_features=8,
-        edge_features=6,
+        edge_features=7,
         hidden_dim=HIDDEN_DIM,
         num_regions=num_regions,
         num_gnn_layers=1,
@@ -1123,7 +1141,7 @@ if __name__ == "__main__":
     )
     
     # Training loop
-    num_episodes = 5000
+    num_episodes = 500
     print("\n" + "="*70)
     print("STARTING TRAINING WITH COMPREHENSIVE VISUALIZATION")
     print("="*70)
