@@ -754,6 +754,9 @@ class A2CTrainer:
         self.current_selected_indices = None
         self.current_metrics = None  # Store metrics as part of state!
         
+    #TODO: redefine reward - reward should be the difference between distances of old_vertiports and new_vertiports
+    #                  args: new_selected_vertiports, current_selected_vertiports, new_selected_metrics, current_selected_metrics
+    #! need to ensure order of subtraction (new - old) OR (old - new), this will have an impact on learning/training 
     def compute_reward(self, selected_vertiports, simulator_metrics=None):
         """
         Compute reward based on selected vertiports
@@ -770,6 +773,9 @@ class A2CTrainer:
         Returns:
             reward: Scalar reward value
         """
+        #TODO: create a internal function: _calculate_distance(), this function will take list of vertiports, and calculate the total_distance between all of them
+        #      This _calculate_distance will be used on new_vp and old_vp then reward will be their difference 
+        #      Same internal method for metrics, and then similar reward from difference of metrics. 
         total_distance = 0.0
         for i, vp_i in enumerate(selected_vertiports):
             for j, vp_j in enumerate(selected_vertiports):
@@ -817,34 +823,43 @@ class A2CTrainer:
         
         return reward, total_distance  # Return both for tracking
     
-    def train_step(self, graph_data, region_mask, reward, current_selection):
+    def train_step(self, new_graph_data, current_value, current_log_prob, region_mask, reward, new_selection, new_selected_vertiports):
         """
         Single training step
         
         Args:
-            graph_data: (x, edge_index, edge_attr) for the graph
+            new_graph_data: (x, edge_index, edge_attr) for the graph
+            current_value: Value of being in current_state(value determined from current_metrics) 
+            current_log_prob
             region_mask: Region assignments
             reward: Reward for current configuration
-            current_selection: Currently selected vertiport indices
+            new_selection: New selected vertiport indices
+            new_selected_vertiports
         """
-        x, edge_index, edge_attr = graph_data # new_state, s'
+        x, edge_index, edge_attr = new_graph_data # new_state, s'
         
         # Forward pass
-        selected_stations, log_probs, value, entropy, action_changed = self.model(
+        # selected_station == a''
+        #! should the entropy be of the new_state, OR the old_state
+        selected_stations, log_probs, new_value, entropy, action_changed = self.model(
             x, edge_index, edge_attr, region_mask, 
-            current_selection=current_selection,
+            current_selection=new_selection,
             training=True
         )
         
         # Compute advantage
         reward_tensor = torch.tensor(reward, dtype=torch.float32)
-        advantage = reward_tensor - value.detach() #! why is advantage reward - value, should this be one step TD, reward + value(s') - value(s)
+        #advantage = reward_tensor - value.detach() 
+        #! why is advantage reward - value, should this be one step TD, reward + gamma*value(s') - value(s)
+        advantage = reward_tensor + (self.gamma * new_value.detach()) - current_value
         
         # Policy loss (Actor)
-        policy_loss = -(log_probs * advantage) # def: alpha * grad(log(prob_action)) * adv -> should this be the policy loss
+        policy_loss = -(current_log_prob * advantage) # def: alpha * grad(log(prob_action)) * adv -> should this be the policy loss
         
         # Value loss (Critic)
-        value_loss = F.mse_loss(value, reward_tensor) #! is this correct - should this be one step TD error as well -  value(s), reward + value(s')
+        #value_loss = F.mse_loss(value, reward_tensor) 
+        #! is this correct - should this be one step TD error as well -  value(s), reward + gamma*value(s')
+        value_loss = F.mse_loss(current_value, reward_tensor+self.gamma*new_value.detach())
         
         # Entropy bonus (for exploration)
         entropy_loss = -entropy
@@ -865,10 +880,10 @@ class A2CTrainer:
             'policy_loss': policy_loss.item(),
             'value_loss': value_loss.item(),
             'entropy': entropy.item(),  # Added entropy to return dict
-            'value_estimate': value.item(),
+            'value_estimate': new_value.item(),
             'reward': reward,
             'advantage': advantage.item(),
-            'selected_stations': selected_stations.cpu().numpy(),
+            'selected_stations': new_selected_vertiports.cpu().numpy(),
             'action_changed_count': action_changed.sum().item()  # Added action change count
         }
     
@@ -908,7 +923,8 @@ class A2CTrainer:
         # step(s) in episode  
         for design_step in range(num_design_steps):
             # Build graph with current selection AND PREVIOUS METRICS
-            # STATE, s -> state defined using 'current' airspace metrics 
+            # State defined using 'current' airspace metrics 
+            #! STATE, s 
             x, edge_index, edge_attr = self.graph_builder.build_graph(
                 selected_vertiports=self.current_selected_vertiports,
                 metrics=self.current_metrics
@@ -916,22 +932,22 @@ class A2CTrainer:
             
             # Model proposes new selection (or keeps current)
             # Given current state -> returns action (new vertiport selection)
-            # ACTION
+            #! ACTION
             with torch.no_grad():
-                new_selected_indices, _, _, _, action_changed = self.model(
+                new_selected_indices, current_log_prob, current_value, _, action_changed = self.model(
                     x, edge_index, edge_attr, 
                     self.graph_builder.region_mask,
                     self.current_selected_indices
                 )
-            
+            #! ACTION
             # Convert to vertiports
             new_selected_vertiports = self.graph_builder.indices_to_vertiports(
                 new_selected_indices
             )
-            
+            #! ACTION
             # Set vertiports in simulator
             simulator.airspace.set_vertiport_list_vp_design(new_selected_vertiports)
-            
+            #! ENV
             # Run simulator
             obs, info = simulator.reset(seed=None)
             
@@ -943,19 +959,19 @@ class A2CTrainer:
                     break
             
             # Collect metrics from simulator
-            # new_state, s'
+            #! NEW_STATE, s'
             simulator_metrics = self._collect_simulator_metrics(simulator)
             
             # Compute reward for this NEW configuration
-            # REWARD 
-            reward, total_distance = self.compute_reward(self.current_selected_vertiports, self.current_metrics)
+            #! REWARD 
+            reward, total_distance = self.compute_reward(self.current_selected_vertiports, self.current_metrics) #! should the reward be the difference between previous state total distance and new state total distance 
             
             episode_rewards.append(reward)
             episode_distances.append(total_distance)
             episode_changes.append(action_changed.sum().item())
             
             # Rebuild graph with NEW selection and NEW metrics
-            # NEW STATE, s' -> defined using 'new' airspace metrics
+            #! NEW STATE, s' -> defined using 'new' airspace metrics
             x_new, edge_index_new, edge_attr_new = self.graph_builder.build_graph(
                 selected_vertiports=new_selected_vertiports,
                 metrics=simulator_metrics
@@ -963,12 +979,13 @@ class A2CTrainer:
             
             # Training step: learn from transition
             stats = self.train_step(
-                #! should this be new_state OR old_state
-                # TRYING: changing x_new, edge_index_new, edge_attr_new TO x, edge_index, edge_attr
-                (x, edge_index, edge_attr), # new_state, s' OR state, s
+                (x_new, edge_index_new, edge_attr_new), #new_state - need for new_value
+                current_value, #current_value
+                current_log_prob, #current_log_prob
                 self.graph_builder.region_mask,
                 reward,
-                self.current_selected_indices # new_selected_indices
+                new_selected_indices, # new_selected_indices - need for new_value
+                new_selected_vertiports
             )
             episode_stats.append(stats)
             
