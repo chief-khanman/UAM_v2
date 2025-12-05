@@ -823,7 +823,7 @@ class A2CTrainer:
         
         return reward, total_distance  # Return both for tracking
     
-    def train_step(self, new_graph_data, current_value, current_log_prob, region_mask, reward, new_selection, new_selected_vertiports):
+    def train_step(self, new_graph_data, current_value, current_log_prob, current_entropy, region_mask, reward, new_selection, new_selected_vertiports):
         """
         Single training step
         
@@ -831,6 +831,7 @@ class A2CTrainer:
             new_graph_data: (x, edge_index, edge_attr) for the graph
             current_value: Value of being in current_state(value determined from current_metrics) 
             current_log_prob
+            current_entropy
             region_mask: Region assignments
             reward: Reward for current configuration
             new_selection: New selected vertiport indices
@@ -862,7 +863,7 @@ class A2CTrainer:
         value_loss = F.mse_loss(current_value, reward_tensor+self.gamma*new_value.detach())
         
         # Entropy bonus (for exploration)
-        entropy_loss = -entropy
+        entropy_loss = -current_entropy
         
         # Combined loss
         loss = (policy_loss + #where is the alpha for the policy loss 
@@ -879,7 +880,7 @@ class A2CTrainer:
             'loss': loss.item(),
             'policy_loss': policy_loss.item(),
             'value_loss': value_loss.item(),
-            'entropy': entropy.item(),  # Added entropy to return dict
+            'entropy': current_entropy.item(),  # Added entropy to return dict
             'value_estimate': new_value.item(),
             'reward': reward,
             'advantage': advantage.item(),
@@ -934,7 +935,7 @@ class A2CTrainer:
             # Given current state -> returns action (new vertiport selection)
             #! ACTION
             with torch.no_grad():
-                new_selected_indices, current_log_prob, current_value, _, action_changed = self.model(
+                new_selected_indices, current_log_prob, current_value, current_entropy, action_changed = self.model(
                     x, edge_index, edge_attr, 
                     self.graph_builder.region_mask,
                     self.current_selected_indices
@@ -964,7 +965,7 @@ class A2CTrainer:
             
             # Compute reward for this NEW configuration
             #! REWARD 
-            reward, total_distance = self.compute_reward(self.current_selected_vertiports, self.current_metrics) #! should the reward be the difference between previous state total distance and new state total distance 
+            reward, total_distance = self.compute_reward(new_selected_vertiports, simulator_metrics) #! should the reward be the difference between previous state total distance and new state total distance 
             
             episode_rewards.append(reward)
             episode_distances.append(total_distance)
@@ -982,6 +983,7 @@ class A2CTrainer:
                 (x_new, edge_index_new, edge_attr_new), #new_state - need for new_value
                 current_value, #current_value
                 current_log_prob, #current_log_prob
+                current_entropy,
                 self.graph_builder.region_mask,
                 reward,
                 new_selected_indices, # new_selected_indices - need for new_value
