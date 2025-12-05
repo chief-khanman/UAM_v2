@@ -823,7 +823,7 @@ class A2CTrainer:
         
         return reward, total_distance  # Return both for tracking
     
-    def train_step(self, new_graph_data, current_value, current_log_prob, current_entropy, region_mask, reward, new_selection, new_selected_vertiports,action_changed, is_terminal):
+    def train_step(self, new_graph_data, current_value, current_log_prob, current_entropy, region_mask, reward, new_selection, new_selected_vertiports,action_changed):
         """
         Single training step
         
@@ -836,6 +836,7 @@ class A2CTrainer:
             reward: Reward for current configuration
             new_selection: New selected vertiport indices
             new_selected_vertiports
+            action_changed
         """
         x, edge_index, edge_attr = new_graph_data # new_state, s'
         
@@ -854,19 +855,17 @@ class A2CTrainer:
         
         reward_tensor = torch.tensor(reward, dtype=torch.float32)
         
-        if is_terminal:
-            td_target = reward_tensor
-        else:
-            td_target = reward_tensor + self.gamma * new_value
-
         
+        td_target = reward_tensor + self.gamma * new_value
+
+        td_target = td_target.detach()
         # Compute advantage
         #advantage = reward_tensor - value.detach() 
         #! why is advantage reward - value, should this be one step TD, reward + gamma*value(s') - value(s)
         advantage =td_target - current_value.detach()
         
         # Policy loss (Actor)
-        policy_loss = -(current_log_prob * advantage) # def: alpha * grad(log(prob_action)) * adv -> should this be the policy loss
+        policy_loss = -(current_log_prob * advantage.detach()) # def: alpha * grad(log(prob_action)) * adv -> should this be the policy loss
         
         # Value loss (Critic)
         #value_loss = F.mse_loss(value, reward_tensor) 
@@ -895,7 +894,7 @@ class A2CTrainer:
             'value_estimate': new_value.item(),
             'reward': reward,
             'advantage': advantage.item(),
-            'selected_stations': new_selected_vertiports.cpu().numpy(),
+            'selected_stations': new_selected_vertiports,
             'action_changed_count': action_changed.sum().item()  # Added action change count
         }
     
@@ -949,7 +948,8 @@ class A2CTrainer:
             new_selected_indices, current_log_prob, current_value, current_entropy, action_changed = self.model(
                 x, edge_index, edge_attr, 
                 self.graph_builder.region_mask,
-                self.current_selected_indices
+                self.current_selected_indices,
+                training=True
             )
             #! ACTION
             # Convert to vertiports
@@ -989,10 +989,6 @@ class A2CTrainer:
                 metrics=simulator_metrics
             )
             
-            if design_step == num_design_steps-1:
-                is_terminal = True
-            else:
-                is_terminal = False
 
             # Training step: learn from transition
             stats = self.train_step(
@@ -1004,8 +1000,7 @@ class A2CTrainer:
                 reward,
                 new_selected_indices, # new_selected_indices - need for new_value
                 new_selected_vertiports,
-                action_changed,
-                is_terminal
+                action_changed
             )
             episode_stats.append(stats)
             
