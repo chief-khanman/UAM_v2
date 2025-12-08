@@ -377,6 +377,8 @@ class Airspace: #                                                               
             region += 1
         
         self.num_regions = len(self.regions_dict.keys())
+        for vp_list in self.regions_dict.values():
+            self.vertiport_list += vp_list
            
 
 
