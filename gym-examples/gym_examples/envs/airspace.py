@@ -352,7 +352,9 @@ class Airspace: #                                                               
         """make verticies of square from center at sqrt2 dist"""
         loc_list:List[Tuple[float,float]] = []
         for n in range(4):
-            _loc_x, _loc_y = math.ceil(center[0] + diag_dist*math.cos(math.pi/2*n + math.pi/4)), math.ceil(center[1] + diag_dist*math.sin(math.pi/2*n + math.pi/4))
+            _loc_x = math.ceil(center[0] + diag_dist*math.cos(math.pi/2*n + math.pi/4))
+            _loc_y  = math.ceil(center[1] + diag_dist*math.sin(math.pi/2*n + math.pi/4))
+            print(type(_loc_x))
             loc_list.append((float(_loc_x), float(_loc_y)))
         return loc_list
 
@@ -362,7 +364,7 @@ class Airspace: #                                                               
         This gives us 4 regions with 4 vertiports each in each region. '''
         self.regions_dict = {}
         centeroid = self.location_utm_gdf.centroid
-        center = (centeroid.x, centeroid.y)
+        center = (centeroid.iloc[0].x, centeroid.iloc[0].y)
         region_center_list = self.build_pattern(center, map_centeroid_to_region_center)
         region = 0
         for region_center in region_center_list:
