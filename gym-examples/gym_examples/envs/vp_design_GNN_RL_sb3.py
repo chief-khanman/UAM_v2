@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GATConv
 
 from vertiport import Vertiport
+from airspace import Airspace
 from map_env_revised import MapEnv
 
 
@@ -20,7 +21,10 @@ class VertiportGraphBuilder:
     Builds and manages graph representations of vertiport configurations
     """
     # updated node feature dimension to 8 (includes selected vertiports as a feature)
-    def __init__(self, airspace, node_feature_dim=8, edge_feature_dim=7, 
+    def __init__(self, 
+                 airspace:Airspace, 
+                 node_feature_dim=3, 
+                 edge_feature_dim=2, 
                  connectivity_type='inter_intra'):
         """
         Args:
@@ -43,7 +47,11 @@ class VertiportGraphBuilder:
         self.region_mask = self._build_region_mask()
         
     def _build_vertiport_mapping(self):
-        """Create bidirectional mapping between vertiports and indices"""
+        """
+        Builds vertiport to index. 
+        Create bidirectional mapping between vertiports and indices
+        """
+
         idx = 0
         for region_id, vertiport_list in self.airspace.regions_dict.items():
             for vertiport in vertiport_list:
@@ -116,6 +124,19 @@ class VertiportGraphBuilder:
         num_vertiports = len(self.vertiport_to_idx)
         x = torch.zeros(num_vertiports, self.node_feature_dim)
         
+        # normalization calculation
+        #! alternative normalization technique - 
+        #  minx, miny, maxx, maxy = self.airspace.location_utm_gdf.total_bounds
+
+        all_x = [vp.location.x for vp in self.idx_to_vertiport.values()]
+        all_y = [vp.location.y for vp in self.idx_to_vertiport.values()]
+        min_x, max_x = min(all_x), max(all_x)
+        min_y, max_y = min(all_y), max(all_y)
+
+        # Avoid division by zero
+        range_x = max_x - min_x if max_x != min_x else 1.0
+        range_y = max_y - min_y if max_y != min_y else 1.0
+
         for idx, vertiport in self.idx_to_vertiport.items():
             features = []
             
@@ -124,38 +145,46 @@ class VertiportGraphBuilder:
                 features.append(1.0) #F1    # this feature is for indicating vertiport is selected 
             else:
                 features.append(0.0)
-            # Location features (normalized)
-            features.append(vertiport.location.x) #F2
-            features.append(vertiport.location.y) #F3
-            
-            # Add metrics if available
-            # metrics is a dict
-            # metrics[key] -> dict; a dict within a dict 
 
-            # metrics is a dict 
-            # one of the KEYS of metrics is 'vertiport_metrics'
-            # 'vertiport_metrics' holds dict[vertiport]: demand, ......
-            if metrics and 'vertiport_metrics' in metrics:
-                vp_metrics = metrics['vertiport_metrics'].get(vertiport, {})
-                features.extend([
-                    vp_metrics.get('demand', 1.0), #F4
-                    vp_metrics.get('utilization', 1.0), #F5
-                    vp_metrics.get('wait_time', 1.0), #F6
-                    vp_metrics.get('throughput', 1.0), #F7
-                ])
-            else:
-                # Default values if no metrics
-                features.extend([1.0, 1.0, 1.0, 1.0])
-            
-            # Region encoding (one-hot or region id)
-            region_id = self._get_region_id(vertiport)
-            features.append(float(region_id)) #F8
-            
-            # Pad to node_feature_dim if needed
-            while len(features) < self.node_feature_dim:
-                features.append(0.0)
+            # F2, F3: Normalized location features (0 to 1 range)
+            normalized_x = (vertiport.location.x - min_x) / range_x
+            normalized_y = (vertiport.location.y - min_y) / range_y
+            features.append(normalized_x)
+            features.append(normalized_y)
             
             x[idx] = torch.tensor(features[:self.node_feature_dim])
+            
+            # # Location features (normalized)
+            # features.append(vertiport.location.x) #F2 - normalize 
+            # features.append(vertiport.location.y) #F3 - normalize
+            
+            # # Add metrics if available
+            # # metrics is a dict
+            # # metrics[key] -> dict; a dict within a dict 
+
+            # # metrics is a dict 
+            # # one of the KEYS of metrics is 'vertiport_metrics'
+            # # 'vertiport_metrics' holds dict[vertiport]: demand, ......
+            # #! remove this section of features 
+            # if metrics and 'vertiport_metrics' in metrics:
+            #     vp_metrics = metrics['vertiport_metrics'].get(vertiport, {})
+            #     features.extend([
+            #         vp_metrics.get('demand', 1.0), #F4
+            #         vp_metrics.get('utilization', 1.0), #F5
+            #         vp_metrics.get('wait_time', 1.0), #F6
+            #         vp_metrics.get('throughput', 1.0), #F7
+            #     ])
+            # else:
+            #     # Default values if no metrics
+            #     features.extend([1.0, 1.0, 1.0, 1.0])
+            
+            # # Region encoding (one-hot or region id)
+            # region_id = self._get_region_id(vertiport)
+            # features.append(float(region_id)) #F8
+            
+            
+            
+            # x[idx] = torch.tensor(features[:self.node_feature_dim])
         
         return x
     
@@ -246,11 +275,11 @@ class VertiportGraphBuilder:
         """
         features = []
         
-        # Distance (primary feature for reward)
+        # Distance (primary feature for reward) - normalize distance 
         distance = self.compute_distance(vp_i, vp_j) #f1
         features.append(distance) #f1
         
-        # Edge type encoding
+        # Edge type encoding - only full connection will be used - remove this feature 
         if edge_type == 'inter':
             features.extend([1.0, 0.0, 0.0]) #f 2,3,4
         elif edge_type == 'intra':
@@ -259,6 +288,7 @@ class VertiportGraphBuilder:
             features.extend([0.0, 0.0, 1.0])
         
         # Add flow metrics if available
+        #! no flow metrics since first i need to ensure GNN-RL algo works in stable-baseline3 
         if metrics and 'flow_metrics' in metrics:
             flow = metrics['flow_metrics'].get((vp_i, vp_j), {})
             features.extend([
@@ -274,7 +304,7 @@ class VertiportGraphBuilder:
         else:
             features.append(0.0) #f7
         
-        # Pad to edge_feature_dim
+        # Pad to edge_feature_dim - no padding required 
         while len(features) < self.edge_feature_dim:
             features.append(0.0) #f8 ...
         
@@ -288,19 +318,36 @@ class VertiportGraphBuilder:
         """Convert list of vertiports to tensor of indices"""
         return torch.tensor([self.vertiport_to_idx[vp] for vp in vertiports])
     
-    def region_idx_to_vertiport(self, action):
-        #TODO: check if the implementation is correct 
+    def region_idx_to_vertiport(self, action, current_vertiport_list):
+        
         # example action: np.array([1,2,3,4])
         # region 1 vp id 1, region 2 vp id 2, region 3 vp id 3, region 4 vp id - previous vp id (since index of vertiports run from 0to3, 4 means no change of vp)
         new_vp_list = []
-        for action_val, pack in zip(action, self.airspace.region_dict.items()):
+        for action_val, pack in zip(action, self.airspace.regions_dict.items()):
             region, vp_list = pack[0], pack[1]
             if action_val < len(vp_list):
                 _vp = vp_list[action_val]
                 new_vp_list.append(_vp)
             else:
-                _vp = self.current_vertiport_list[region]
-        pass
+                _vp = current_vertiport_list[region]
+                new_vp_list.append(_vp)
+
+
+        # new_vp_list = []
+
+        # for region_idx, (region_id, vp_list) in enumerate(sorted(self.airspace.regions_dict.items())):
+        #     action_val = action[region_idx]
+        #     if action_val < len(vp_list):
+        #         # Select the vertiport at this index
+        #         _vp = vp_list[action_val]
+        #         new_vp_list.append(_vp)
+        #     else:
+        #         # No change - keep current vertiport for this region
+        #         _vp = current_selected_vertiports[region_idx]
+        #         new_vp_list.append(_vp)
+        
+        return new_vp_list
+        
 
 
 
@@ -316,12 +363,12 @@ class VertiportDesignEnv(gym.Env):
 
     metadata = {"render_modes": ["human"], "render_fps": 30}
 
-    def __init__(self, simulator_step, total_episode_timestep):
+    def __init__(self, simulator_step, total_episode_timestep, node_feat_dim=3, edge_feat_dim=2):
         super().__init__()
 
         # define UAM simulator 
         test_mode = True
-        num_regions = 4
+        self.num_regions = 4
 
         TEST_MODE = True
     
@@ -356,18 +403,20 @@ class VertiportDesignEnv(gym.Env):
             print('Vertiport Design problem in test mode')
             self.uam_simulator.airspace.make_regions_dict_vp_des_test_mode(map_centeroid_to_region_center=2*(32_000_000**0.5), region_center_to_vp=32_000_000**0.5)
         else:
-            self.uam_simulator.airspace.make_regions_dict_vp_des('commercial', num_regions=num_regions)
+            self.uam_simulator.airspace.make_regions_dict_vp_des('commercial', num_regions=self.num_regions)
 
 
 
 
         # define graph builder 
+        self.node_feat_dim = node_feat_dim
+        self.edge_feat_dim = edge_feat_dim
         #TODO: change node feature to have bool feature for active/inactive vertiport, location x,y(normalized), region_id_one_hot
         #TODO: change edge feature to have bool feature for active/inactive edge between vps, edge distance(normalized)
         self.graph_builder:VertiportGraphBuilder = VertiportGraphBuilder(
                                                                             airspace=self.uam_simulator.airspace,
-                                                                            node_feature_dim=8, # x,y, 1,1,1,1,region_id
-                                                                            edge_feature_dim=7,
+                                                                            node_feature_dim=self.node_feat_dim, # x,y, 1,1,1,1,region_id
+                                                                            edge_feature_dim=self.edge_feat_dim,
                                                                             connectivity_type='full' # option1: inter_intra
                                                                         )
         
@@ -378,15 +427,24 @@ class VertiportDesignEnv(gym.Env):
         # Define action and observation space
         # They must be gym.spaces objects
         num_vertiports = len(self.uam_simulator.airspace.vertiport_list)
+        
         # Action space is discrete it changes depending on the region we are currently working with 
         # can the action space be a dictionary - region:vertiport_list + no_action
-        self.action_space = spaces.MultiDiscrete([len(vp) + 1 for vp in self.uam_simulator.airspace.regions_dict.values()])
-        
+        self.action_space = spaces.MultiDiscrete([len(vp_list) + 1 for vp_list in self.uam_simulator.airspace.regions_dict.values()])
+        #TODO: ensure airspace.regions_dict is fixed every simulation run 
+        max_edges = num_vertiports*(num_vertiports-1)
         # This is the node_feat, edge_attr, and edge_index derived from graph_builder
         self.observation_space = spaces.Dict({
-            'node_feat':spaces.Box(low=-10000, high=10000, shape=(num_regions, num_vertiports)), 
-            'edge_index':spaces.Box(low=0, high=100, shape=(2, num_vertiports)), 
-            'edge_attr':spaces.Box(low=-10000, high=10000, shape=(num_vertiports,num_vertiports))
+            'node_feat':spaces.Box(low=-10000, 
+                                   high=10000, 
+                                   shape=(num_vertiports, self.graph_builder.node_feature_dim)), 
+            'edge_index':spaces.Box(low=-10, 
+                                    high=100, 
+                                    shape=(2, int(max_edges)),
+                                    dtype=np.int64), 
+            'edge_attr':spaces.Box(low=-1000000., 
+                                   high=1000000., 
+                                   shape=(int(max_edges),self.graph_builder.edge_feature_dim))
         })
 
         self.current_time_step = 0
@@ -412,7 +470,7 @@ class VertiportDesignEnv(gym.Env):
         return metrics
     
 
-    def compute_reward(self, selected_vertiports, simulator_metrics=None):
+    def _compute_reward(self, selected_vertiports, simulator_metrics=None):
         """
         Compute reward based on selected vertiports
         
@@ -438,31 +496,6 @@ class VertiportDesignEnv(gym.Env):
                     distance = self.graph_builder.compute_distance(vp_i, vp_j)
                     total_distance += distance
         
-        #REWARD trick - 
-        # best_vertiports = [(623157.,3355240.), (617501., 3355240.), (617501., 3349584.), (623157.,3349584.)]
-        # best_count = 0
-        # print('checking for best vp comb')
-        # for vertiport in selected_vertiports:
-        #     # print('inside check')
-        #     # time.sleep(1)
-        #     temp_xy = (vertiport.x, vertiport.y)
-        #     # print(f'Temp vp tuple: {temp_xy}')
-        #     if temp_xy in best_vertiports:
-        #         best_count+=1
-        #         # print(f'current best_count {best_count}')
-        # if best_count == 4:
-        #     distance_reward = 1000000
-        #     time.sleep(3)
-        #     print('Found best arrangement')
-        #     return distance_reward, total_distance
-        #     # print('FOUND BEST vp arrangement')
-        #     # time.sleep(3)
-        # else:
-        #     # Reward is negative distance (we want to minimize total distance)
-        #     distance_reward = -total_distance
-
-        
-        
         # Add simulator metrics if available
         if simulator_metrics:
             # Example: combine with throughput, wait time, etc.
@@ -483,7 +516,7 @@ class VertiportDesignEnv(gym.Env):
     def _run_simulator(self,action):
         # One step of vp design problem means running the simulator and returning metrics 
         # action - new_vp_selection
-        new_vertiport_list = self.graph_builder.region_idx_to_vertiport(action)
+        new_vertiport_list = self.graph_builder.region_idx_to_vertiport(action, self.current_selected_vertiports)
         self.current_selected_vertiports = new_vertiport_list
         self.uam_simulator.airspace.set_vertiport_list_vp_design(new_vertiport_list)
         
@@ -491,7 +524,7 @@ class VertiportDesignEnv(gym.Env):
         # Run simulator
         obs_simulator, info_simulator = self.uam_simulator.reset(seed=None)
             
-        for sim_step in range(self.simulator_steps):
+        for sim_step in range(self.simulator_step):
             obs, sim_reward, terminated, truncated, info = self.uam_simulator.step(
                 self.uam_simulator.action_space.sample()
             )
@@ -512,81 +545,139 @@ class VertiportDesignEnv(gym.Env):
 
         self.current_time_step += 1 
         
+        # previous states 
+        self.previous_selected_vertiports = self.current_selected_vertiports.copy()
+        self.previous_metrics = self.current_metrics
 
         # Collect metrics from simulator
         #! NEW_STATE, s'
-        self.current_metrics = self._run_simulator(action)
+        # current_selected_vertiports are set in: 
+        # self.current_selected_vertiports -> run_simulator(action)
+        self.current_metrics =          self._run_simulator(action)
         x, edge_index, edge_attr  = self.graph_builder.build_graph(self.current_selected_vertiports, self.current_metrics)
-
-        observation = spaces.Dict({'node_feat':x,
-                                   'edge_index':edge_index,
-                                   'edge_attr':edge_attr})
+        observation = {
+                        'edge_attr':edge_attr.numpy(),
+                        'edge_index':edge_index.numpy(),
+                        'node_feat':x.numpy()
+                                   }
         
-        info = spaces.Dict({'node_feat':x,
-                                   'edge_index':edge_index,
-                                   'edge_attr':edge_attr})
+        
         
         # Compute reward for this NEW configuration
         # reward - compute_reward
         #! REWARD 
-        reward, total_distance = self.compute_reward(action, self.current_metrics) #! should the reward be the difference between previous state total distance and new state total distance 
+        reward, total_distance = self._compute_reward(self.current_selected_vertiports, self.current_metrics) #! should the reward be the difference between previous state total distance and new state total distance 
         # Observation - metrics 
         
         # terminated/truncated are the same 
         terminated = False
         
-        #! NEED TO ACCESS total_timestep from learn()
-        if self.current_time_step > self.total_episode_timestep:
+
+        if self.current_time_step >= self.total_episode_timestep:
             truncated = True
         else:
             truncated = False
         
 
+        info = {'node_feat':x,
+                'edge_index':edge_index,
+                'edge_attr':edge_attr, 
+                'selected_vertiports': None, 
+                'vertiport_change': None,
+                'reward':reward, 
+                'total_distance':total_distance} #!
 
         
         return observation, reward, terminated, truncated, info
 
     def reset(self, seed=None, options=None):
         # define vertiport design variables
-        # Track current selection AND metrics (STATE = config + metrics)
-        self.current_selected_vertiports = None
-        self.current_selected_indices = None
-        self.current_metrics = None  # Store metrics as part of state!
+        self.current_time_step = 0
 
-        if self.current_selected_vertiports is None:
-            self.current_selected_vertiports = []
-            for region_id in sorted(self.graph_builder.airspace.regions_dict.keys()):
-                first_vp = self.graph_builder.airspace.regions_dict[region_id][0]
-                self.current_selected_vertiports.append(first_vp)
-            self.current_selected_indices = self.graph_builder.vertiports_to_indices(
-                self.current_selected_vertiports
-            )
+        # Initialize with first vertiport from each region
+        self.current_selected_vertiports = []
+        for region_id in sorted(self.graph_builder.airspace.regions_dict.keys()):
+            first_vp = self.graph_builder.airspace.regions_dict[region_id][0]
+            self.current_selected_vertiports.append(first_vp)
+
+        self.current_selected_indices = self.graph_builder.vertiports_to_indices(
+            self.current_selected_vertiports
+        )
+        # Initialize previous state trackers (None for first step)
+        self.previous_selected_vertiports = None
+        self.previous_metrics = None
+
+        # Create initial action that keeps all current vertiports
+        # This is just for running the simulator initially
+        num_regions = len(self.uam_simulator.airspace.regions_dict)
+        initial_action = np.array([0] * num_regions)  # Select first VP in each region
+
+        # Run simulator to get initial metrics
+        self.current_metrics = self._run_simulator(initial_action)
+        # Build initial graph observation
+        x, edge_index, edge_attr = self.graph_builder.build_graph(
+            self.current_selected_vertiports, self.current_metrics
+        )
+
+        observation = {'node_feat': x.numpy(), 'edge_index': edge_index.numpy(), 'edge_attr': edge_attr.numpy()}
+        # Info
+        # info = {
+        #     'initial_selected_vertiports': self.current_selected_vertiports,
+        #     'current_timestep': self.current_time_step
+        # }
+
+        # # Track current selection AND metrics (STATE = config + metrics)
+        # self.current_selected_vertiports = None
+        # self.current_selected_indices = None
+        # self.current_metrics = None  # Store metrics as part of state!
+
+        # if self.current_selected_vertiports is None:
+        #     self.current_selected_vertiports = []
+        #     # for region_id in sorted(self.graph_builder.airspace.regions_dict.keys()):
+        #     #     first_vp = self.graph_builder.airspace.regions_dict[region_id][0]
+        #     #     self.current_selected_vertiports.append(first_vp)
+        #     # self.current_selected_indices = self.graph_builder.vertiports_to_indices(
+        #     #     self.current_selected_vertiports
+        #     # )
+
+        #     reset_action = [0 for _ in self.num_regions]
+
         
 
 
-        # Use the selected vertiports to generate metric using the simulator
-        self.current_metrics = self._run_simulator(self.current_selected_vertiports)
+        # # Use the selected vertiports to generate metric using the simulator
+        # #! run_simulator(action), action = [index of vp for each region]
+        # self.current_metrics = self._run_simulator(reset_action)
 
-        # # build (alternative) simple_metrics 
-        # # selected nodes 
-        x, edge_index, edge_attr  = self.graph_builder.build_graph(self.current_selected_vertiports, self.current_metrics)
-        # selected_nodes = np.array([])
-        # # node location x,y (this might need to be normalized, use the center of map x,y as normalization)
-        # node_location = np.array([(x,y),(x,y)])
-        # # selected edges
-        # selected_edges = np.array([])
-        # # edge distance 
-        # edge_distance = np.array([])
-        # self.current_metrics = spaces.Dict({'selected_node':selected_nodes,
-        #                              'node_location':node_location,
-        #                              'selected_edges':selected_edges,
-        #                              'edge_distance':edge_distance})
-        # Observation - metrics - initial metrics built using first vertiports from each region 
-        # Additional Observation - selected vertiports
-        # use the other feats that are not used as additional_info
-        observation = spaces.Dict({'node_feat':x, 'edge_index':edge_index, 'edge_attr':edge_attr})
-        # info 
-        info = {'node_feat':x, 'edge_index':edge_index, 'edge_attr':edge_attr}
+        # # # build (alternative) simple_metrics 
+        # # # selected nodes 
+        # x, edge_index, edge_attr  = self.graph_builder.build_graph(self.current_selected_vertiports, self.current_metrics)
+        # # selected_nodes = np.array([])
+        # # # node location x,y (this might need to be normalized, use the center of map x,y as normalization)
+        # # node_location = np.array([(x,y),(x,y)])
+        # # # selected edges
+        # # selected_edges = np.array([])
+        # # # edge distance 
+        # # edge_distance = np.array([])
+        # # self.current_metrics = spaces.Dict({'selected_node':selected_nodes,
+        # #                              'node_location':node_location,
+        # #                              'selected_edges':selected_edges,
+        # #                              'edge_distance':edge_distance})
+        
+        # # Observation - metrics - initial metrics built using first vertiports from each region 
+        # # Additional Observation - selected vertiports
+        # # use the other feats that are not used as additional_info
+        # observation = spaces.Dict({'node_feat':x, 'edge_index':edge_index, 'edge_attr':edge_attr})
+        
+        # # info 
+        info = {'node_feat':x,
+                'edge_index':edge_index,
+                'edge_attr':edge_attr, 
+                'selected_vertiports': None, 
+                'vertiport_change': None,
+                'reward':0, 
+                'total_distance':0} #!
+        
         return observation, info
 
     def render(self):
@@ -596,104 +687,109 @@ class VertiportDesignEnv(gym.Env):
         pass
 
 
-
+#### UNCOMMENT - after checking ####
 ##### Env check #####
 # comment out after checking 
-from stable_baselines3.common.env_checker import check_env
+# from stable_baselines3.common.env_checker import check_env
 
-env = VertiportDesignEnv(None)
-# It will check your custom environment and output additional warnings if needed
-check_env(env)
+# env = VertiportDesignEnv(None)
+# # It will check your custom environment and output additional warnings if needed
+# check_env(env)
 
-##### Env check #####
+# ##### Env check #####
 
-#build the observation space converter/wrapper 
+# #build the observation space converter/wrapper 
 
 
 
-class CustomGNN(BaseFeaturesExtractor):
-    """
-    :param observation_space: (gym.Space)
-    :param features_dim: (int) Number of features extracted.
-        This corresponds to the number of unit for the last layer.
-    """
-    #! how to convert observation to x, edge_index, and edge_attr for GNN input. 
-    def __init__(self, node_features, edge_features, hidden_dim=128, num_layers=3, observation_space: spaces.Box, features_dim: int = 256):
-        """
-        Args:
-            node_features (int): Number of input node features
-            edge_features (int): Number of input edge features
-            hidden_dim (int): Hidden dimension for embeddings
-            num_layers (int): Number of GNN layers
-        """
-        super().__init__(observation_space, features_dim)
+# class CustomGNN(BaseFeaturesExtractor):
+#     """
+#     :param observation_space: (gym.Space)
+#     :param features_dim: (int) Number of features extracted.
+#         This corresponds to the number of unit for the last layer.
+#     """
+#     def __init__(self,  observation_space: spaces.Dict, features_dim: int = 8, final_dim=8, num_layers=1):
+#         """
+#         Args:
+#             node_features (int): Number of input node features
+#             edge_features (int): Number of input edge features
+#             features_dim (int): Hidden dimension for embeddings
+#             num_layers (int): Number of GNN layers
+#         """
+#         super().__init__()
 
+#         self.node_features = observation_space['node_feat'].shape[1]
+#         self.edge_features = observation_space['edge_feat'].shape[1]
         
         
-        self.node_proj = nn.Linear(node_features, hidden_dim)
-        self.edge_proj = nn.Linear(edge_features, hidden_dim)
+#         self.node_proj = nn.Linear(self.node_features, features_dim)
+#         self.edge_proj = nn.Linear(self.edge_features, features_dim)
 
-        self.conv_layers = nn.ModuleList([
-            GATConv(hidden_dim, hidden_dim, edge_dim=hidden_dim, heads=4, concat=False)
-            for _ in range(num_layers)
-        ])
+#         self.conv_layers = nn.ModuleList([
+#             #! what is                                                          concat ??
+#             GATConv(features_dim, features_dim, edge_dim=features_dim, heads=4, concat=False)
+#             for _ in range(num_layers)
+#         ])
         
-        self.layer_norms = nn.ModuleList([
-            nn.LayerNorm(hidden_dim) for _ in range(num_layers)
-        ])
+#         self.layer_norms = nn.ModuleList([
+#             nn.LayerNorm(features_dim) for _ in range(num_layers)
+#         ])
 
-    def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass through GNN.
+#         self. output_proj = nn.Linear(features_dim, final_dim)
+
+#     def forward(self, observations: spaces.Dict) -> torch.Tensor:
+#         """
+#         Forward pass through GNN.
         
-        Args:
-            x (torch.Tensor): Node features [num_nodes, node_features]
-            edge_index (torch.Tensor): Edge connectivity [2, num_edges]
-            edge_attr (torch.Tensor): Edge features [num_edges, edge_features]
-            batch (torch.Tensor, optional): Batch assignment for nodes
+#         Args:
+#             x (torch.Tensor): Node features [num_nodes, node_features]
+#             edge_index (torch.Tensor): Edge connectivity [2, num_edges]
+#             edge_attr (torch.Tensor): Edge features [num_edges, edge_features]
+#             batch (torch.Tensor, optional): Batch assignment for nodes
         
-        Returns:
-            torch.Tensor: Node embeddings [num_nodes, hidden_dim]
-        """
-        # build the graph using observation
-        #!                                            build_graph() args: selected_vp, metrics
-        x, edge_index, edge_attr = VertiportDesignEnv.build_graph(observations)
+#         Returns:
+#             torch.Tensor: Node embeddings [num_nodes, features_dim]
+#         """
+#         x, edge_index, edge_attr = observations['node_feat'], observations['edge_index'].long(), observations['edge_attr']
         
-        # Project inputs to hidden dimension
-        h = self.node_proj(x)
-        edge_attr = self.edge_proj(edge_attr)
+#         # Project inputs to hidden dimension
+#         h = self.node_proj(x)
+#         edge_attr = self.edge_proj(edge_attr)
         
-        # Apply GNN layers with residual connections
-        for conv, norm in zip(self.conv_layers, self.layer_norms):
-            h_new = conv(h, edge_index, edge_attr)
-            h_new = F.relu(h_new)
-            h = norm(h + h_new)  # Residual connection
+#         # Apply GNN layers with residual connections
+#         for conv, norm in zip(self.conv_layers, self.layer_norms):
+#             h_new = conv(h, edge_index, edge_attr)
+#             h_new = F.relu(h_new)
+#             h = norm(h + h_new)  # Residual connection
             
-        return h
+#         graph_embedding = torch.mean(h, dim=0)
+#         output = self.output_proj(graph_embedding)
 
-policy_kwargs = dict(
-    features_extractor_class=CustomGNN,
-    features_extractor_kwargs=dict(features_dim=128),
-)
+#         return output
 
-
-
-##### Model training #####
-# Instantiate the env
-env = VertiportDesignEnv()
-
-# Define and Train the agent
-# PPO 
-model = PPO("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1)
-model.learn(1000)
-
-#A2C
-model = A2C("MplPolicy", env).learn(total_timesteps=1000)
-
-##### Model training #####
+# policy_kwargs = dict(
+#     features_extractor_class=CustomGNN,
+#     features_extractor_kwargs=dict(features_dim=16),
+# )
 
 
 
+# ##### Model training #####
+# # Instantiate the env
+# simulator_step = 3
+# total_episode_timestep = 1000
+# env = VertiportDesignEnv(simulator_step=simulator_step, total_episode_timestep=total_episode_timestep)
+
+# # Define and Train the agent
+# # PPO 
+# model_PPO = PPO("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1)
+# model_PPO.learn(total_episode_timestep)
+
+# #A2C
+# model_A2C = A2C("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1)
+# model_A2C.learn(total_episode_timestep)
+
+# ##### Model training #####
 
 
 
@@ -701,4 +797,22 @@ model = A2C("MplPolicy", env).learn(total_timesteps=1000)
 
 
 
-#run train the policy network 
+
+
+
+# #run train the policy network 
+
+if __name__ == '__main__':
+    # print('VP design problem')
+    # env = VertiportDesignEnv(simulator_step=3, total_episode_timestep=10)
+    # env.reset()
+    # action_sample = env.action_space.sample()
+    # print(action_sample)
+    # env.step(action_sample)
+    ##### Env check #####
+    #comment out after checking 
+    from stable_baselines3.common.env_checker import check_env
+
+    env = VertiportDesignEnv(simulator_step=3, total_episode_timestep=1000)
+    # It will check your custom environment and output additional warnings if needed
+    check_env(env)
