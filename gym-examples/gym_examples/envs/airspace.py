@@ -354,7 +354,6 @@ class Airspace: #                                                               
         for n in range(4):
             _loc_x = math.ceil(center[0] + diag_dist*math.cos(math.pi/2*n + math.pi/4))
             _loc_y  = math.ceil(center[1] + diag_dist*math.sin(math.pi/2*n + math.pi/4))
-            print(type(_loc_x))
             loc_list.append((float(_loc_x), float(_loc_y)))
         return loc_list
 
