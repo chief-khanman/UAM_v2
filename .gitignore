@@ -17,4 +17,4 @@ output.txt
 /gym-examples/gym_examples/envs/training_logs
 /gym-examples/gym_examples/envs/training_results
 /gym-examples/gym_examples/envs/GNN_RL_notes.txt
-
+/gym-examples/gym_examples/envs/tensorboard_logs
