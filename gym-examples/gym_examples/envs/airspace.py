@@ -382,8 +382,6 @@ class Airspace: #                                                               
             self.vertiport_list += vp_list
            
 
-
-        pass 
     #! ** this method will be removed and replaced with new method **
     def make_regions_dict_vp_des(self, tag_str, num_regions):
         '''Using tag_str, and num_region, make an airspace dict attribute that hold regions and vertiports'''
