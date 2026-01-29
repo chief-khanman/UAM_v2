@@ -369,7 +369,7 @@ class Airspace: #                                                               
         for region_center in region_center_list:
             _vertiport_list = []
             vertiport_centers_list = self.build_pattern(region_center, region_center_to_vp)
-            for i,vertiport_center in enumerate(vertiport_centers_list):
+            for i,vertiport_center in enumerate(sorted(vertiport_centers_list)):
                 _vp = Vertiport(Point(vertiport_center[0], vertiport_center[1]))
                 _vp.region = region
                 _vp.vp_id_for_region = i
