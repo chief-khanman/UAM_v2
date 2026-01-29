@@ -18,4 +18,4 @@ output.txt
 /gym-examples/gym_examples/envs/training_results
 /gym-examples/gym_examples/envs/GNN_RL_notes.txt
 /gym-examples/gym_examples/envs/tensorboard_logs
-/gym-examples/gym_examples/envs/vp_design_checks.txt
+/gym-examples/gym_examples/envs/vp_design_checks_log.txt
