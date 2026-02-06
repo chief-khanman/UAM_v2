@@ -362,7 +362,16 @@ class VertiportDesignEnv(gym.Env):
 
         if test_mode:
             print('Vertiport Design problem in test mode')
-            self.uam_simulator.airspace.make_regions_dict_vp_des_test_mode_new(map_centeroid_to_region_center=2*(32_000_000**0.5), region_center_to_vp=32_000_000**0.5)
+            
+            #self.uam_simulator.airspace.make_regions_dict_vp_des_test_mode(map_centeroid_to_region_center=2*(32_000_000**0.5), region_center_to_vp=32_000_000**0.5)
+            
+            self.uam_simulator.airspace.make_regions_dict_vp_des_test_mode_new(number_of_regions=4, 
+                                                number_of_vertiports=5,
+                                                spacing_between_vertiports=15000,
+                                                orientation='horizontal',
+                                                distance_center_2_vertex=5000,
+                                                distance_map_centeroid_2_region_center=15000,
+                                                )
         else:
             self.uam_simulator.airspace.make_regions_dict_vp_des('commercial', num_regions=self.num_regions)
 
