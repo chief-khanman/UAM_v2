@@ -857,8 +857,9 @@ class MapEnv(gym.Env):
                 num_vertiports = min(self.max_vertiports, self.number_of_vertiport)
                 self.airspace.create_n_random_vertiports(num_vertiports, seed=self._seed)
         else: 
-            print('MapEnv is set for Vertiport Design Problem')
-            print(f'from map_env_revised.reset() -> Vertiport List: {self.airspace.vertiport_list}')
+            pass
+            # print('MapEnv is set for Vertiport Design Problem')
+            # print(f'from map_env_revised.reset() -> Vertiport List: {self.airspace.vertiport_list}')
 
         # Verify we have at least 2 vertiports
         if not self.vp_design_problem and len(self.airspace.get_vertiport_list()) < 2:
