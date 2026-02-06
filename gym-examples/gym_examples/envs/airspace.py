@@ -380,7 +380,111 @@ class Airspace: #                                                               
         self.num_regions = len(self.regions_dict.keys())
         for vp_list in self.regions_dict.values():
             self.vertiport_list += vp_list
-           
+
+        return None
+    
+    def build_n_center_pattern(self, 
+                               center, 
+                               n, 
+                               distance_center_2_vertex, 
+                               start_angle=0):
+        '''Use center to build polygon with n vertices'''
+        
+        center_pattern_list = []
+        
+        center_x = center[0]
+        center_y = center[1]
+
+        r = distance_center_2_vertex
+        del_theta = 2 * math.pi / n
+
+        for i in range(n):
+            theta = i * del_theta
+            x = center_x + r*math.cos(start_angle + theta)
+            y = center_y + r*math.sin(start_angle + theta)
+            center_pattern_list.append((x,y))
+        
+        return center_pattern_list
+    
+
+    def build_linear_vertiports_pattern(self, 
+                                        region_center, 
+                                        number_of_vertiport, 
+                                        spacing_between_vertiports, 
+                                        orientation='horizontal'):
+        '''Build linear pattern of vertiports centered at region_center'''
+        cx, cy = region_center
+        n = number_of_vertiport
+        spacing = spacing_between_vertiports
+        
+        # Calculate starting offset to center the pattern
+        total_length = (n - 1) * spacing
+        start_offset = -total_length / 2
+        
+        if orientation == 'horizontal':
+             pattern_list = [(cx + start_offset + i * spacing, cy) for i in range(n)]
+        elif orientation == 'vertical':
+            pattern_list = [(cx, cy + start_offset + i * spacing) for i in range(n)]
+        else:
+            raise ValueError(f"Orientation must be 'horizontal' or 'vertical', got '{orientation}'")
+        
+        return pattern_list
+
+
+
+    def make_regions_dict_vp_des_test_mode_new(self, 
+                                           number_of_regions=4, 
+                                           number_of_vertiports=5, 
+                                           spacing_between_vertiports=1000, 
+                                           orientation='horizontal', 
+                                           distance_center_2_vertex=1500,
+                                           distance_map_centeroid_2_region_center = 2000,
+                                           start_angle=0,
+                                           random_seed = 456789):
+        
+        random.seed(random_seed)
+        self.regions_dict = {}
+        
+        centeroid = self.location_utm_gdf.centroid
+        center = (centeroid.iloc[0].x, centeroid.iloc[0].y)
+        
+        region_center_list = self.build_n_center_pattern(center, 
+                                                         n=number_of_regions, 
+                                                         distance_center_2_vertex=distance_map_centeroid_2_region_center, 
+                                                         start_angle=0)
+
+        # randomly choose between build_linear_pattern or build_n_center_pattern
+        for region in range(number_of_regions):
+            
+            vertiport_builder = random.choices([self.build_linear_vertiports_pattern, self.build_n_center_pattern], weights=[10,30]) 
+            region_center = region_center_list[region]
+
+            if vertiport_builder[0] == self.build_linear_vertiports_pattern:
+                spacing_between_vertiports = spacing_between_vertiports
+                vertiport_centers_list = vertiport_builder[0](region_center, number_of_vertiports, spacing_between_vertiports, orientation)
+                _vertiport_list = []
+                for i,vertiport_center in enumerate(sorted(vertiport_centers_list)):
+                    _vp = Vertiport(Point(vertiport_center[0], vertiport_center[1]))
+                    _vp.region = region
+                    _vp.vp_id_for_region = i
+                    _vertiport_list.append(_vp)
+                self.regions_dict[region] = _vertiport_list
+            else:
+                start_angle = 0
+                vertiport_centers_list = vertiport_builder[0](region_center, number_of_vertiports, distance_center_2_vertex, start_angle)
+                _vertiport_list = []
+                for i,vertiport_center in enumerate(sorted(vertiport_centers_list)):
+                    _vp = Vertiport(Point(vertiport_center[0], vertiport_center[1]))
+                    _vp.region = region
+                    _vp.vp_id_for_region = i
+                    _vertiport_list.append(_vp)
+                self.regions_dict[region] = _vertiport_list
+
+        self.num_regions = len(self.regions_dict.keys())
+        for vp_list in self.regions_dict.values():
+            self.vertiport_list += vp_list
+        
+        return None           
 
     #! ** this method will be removed and replaced with new method **
     def make_regions_dict_vp_des(self, tag_str, num_regions):
@@ -476,7 +580,15 @@ if __name__ == '__main__':
     #     print(vertiport)
     #     print(vertiport.region)
 
-    airspace.make_regions_dict_vp_des_test_mode(map_centeroid_to_region_center=2*(32_000_000**0.5), region_center_to_vp=32_000_000**0.5)
+    # airspace.make_regions_dict_vp_des_test_mode(map_centeroid_to_region_center=2*(32_000_000**0.5), region_center_to_vp=32_000_000**0.5)
+
+    airspace.make_regions_dict_vp_des_test_mode_new(number_of_regions=4, 
+                                                number_of_vertiports=5,
+                                                spacing_between_vertiports=15000,
+                                                orientation='horizontal',
+                                                distance_center_2_vertex=5000,
+                                                distance_map_centeroid_2_region_center=15000,
+                                                )
     print(airspace.regions_dict)
     x_arr = []
     y_arr = []
