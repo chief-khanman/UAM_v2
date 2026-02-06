@@ -294,30 +294,26 @@ class VertiportGraphBuilder:
         """Convert list of vertiports to tensor of indices"""
         return torch.tensor([self.vertiport_to_idx[vp] for vp in vertiports])
     
-    def region_idx_to_vertiport(self, action, current_vertiport_list):
+    def region_idx_to_vertiport(self, action):
         """
-        Convert action array to new vertiport list.
+        Use action array to build new vertiport list.
         
         Args:
             action: np.array where each element is either:
-                - 0 to len(vp_list)-1: select that vertiport from the region
-                - len(vp_list): keep the current vertiport (no change)
-            current_vertiport_list: list of currently selected vertiports (one per region)
+                - 0 to len(vp_list): select that vertiport from the region
+                
         
         Returns:
             new_vp_list: list of vertiports after applying action
         """
+
         new_vp_list = []
-        for region_idx, (region_id, vp_list) in enumerate(sorted(self.airspace.regions_dict.items())):
-            action_val = action[region_idx]
-            if action_val < len(vp_list):
-                # Select the vertiport at this index
-                _vp = vp_list[action_val]
-                new_vp_list.append(_vp)
-            else:
-                # No change - keep current vertiport for this region
-                _vp = current_vertiport_list[region_idx]
-                new_vp_list.append(_vp)
+        for region, vp_list in self.airspace.regions_dict.items():
+            # vp_list is sorted and unchanging list, 
+            # so action is used to access the index location of vp_list to access a vertiport
+            # this gives consistency of vertiport and lets the policy learn about vertiport's impact on space desing 
+            _vp = vp_list[action[region]] 
+            new_vp_list.append(_vp)
         
         return new_vp_list
 
@@ -383,8 +379,8 @@ class VertiportDesignEnv(gym.Env):
         # Define action and observation space
         num_vertiports = len(self.uam_simulator.airspace.vertiport_list)
         
-        # Action space: for each region, select vertiport index (0 to len-1) or keep previous (len)
-        self.action_space = spaces.MultiDiscrete([len(vp_list) + 1 for vp_list in self.uam_simulator.airspace.regions_dict.values()])
+        # Action space: for each region, select vertiport index (0 to len(vp_list))
+        self.action_space = spaces.MultiDiscrete([len(vp_list) for vp_list in self.uam_simulator.airspace.regions_dict.values()])
         
         max_edges = num_vertiports * (num_vertiports - 1)
         
@@ -487,7 +483,8 @@ class VertiportDesignEnv(gym.Env):
             metrics: Dictionary of simulator metrics
         """
         # Convert action to new vertiport list
-        new_vertiport_list = self.graph_builder.region_idx_to_vertiport(action, self.current_selected_vertiports)
+        new_vertiport_list = self.graph_builder.region_idx_to_vertiport(action)
+        
         self.current_selected_vertiports = new_vertiport_list
         
         # Update simulator with new vertiport configuration
@@ -536,12 +533,11 @@ class VertiportDesignEnv(gym.Env):
         x, edge_index, edge_attr = self.graph_builder.build_graph(
             self.current_selected_vertiports, self.current_metrics
         )
-        
         observation = {
             'node_feat': x.numpy().astype(np.float32),
             'edge_index': edge_index.numpy().astype(np.int64),
             'edge_attr': edge_attr.numpy().astype(np.float32),
-            'selected_actions': self._get_selected_actions().astype(np.int64)
+            'selected_actions': action
         }
 
         # Compute dense improvement reward
@@ -562,6 +558,12 @@ class VertiportDesignEnv(gym.Env):
             'reward': reward,
             'timestep': self.current_time_step
         }
+
+        if terminated or truncated: 
+            print('Best vertiports are: (616328 3356411), (624328 3356411) (616328 3348411) (624328 3348411)')
+            print('\n')
+            print(f'Final selected vertiports are: {self.current_selected_vertiports}')
+            time.sleep(0.2)
         
         return observation, reward, terminated, truncated, info
 
@@ -606,12 +608,11 @@ class VertiportDesignEnv(gym.Env):
         x, edge_index, edge_attr = self.graph_builder.build_graph(
             self.current_selected_vertiports, self.current_metrics
         )
-        
         observation = {
             'node_feat': x.numpy().astype(np.float32),
             'edge_index': edge_index.numpy().astype(np.int64),
             'edge_attr': edge_attr.numpy().astype(np.float32),
-            'selected_actions': self._get_selected_actions().astype(np.int64)
+            'selected_actions': initial_action
         }
         
         info = {
