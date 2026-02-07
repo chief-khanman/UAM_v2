@@ -388,7 +388,7 @@ if __name__ == "__main__":
     
     # Training configuration
     CONFIG = {
-        'total_timesteps': 3200,      # Total training steps
+        'total_timesteps': 160*375,      # Total training steps
         'simulator_step': 2,            # UAM simulator steps per design step
         'episode_length': 160,          # Steps per design episode
         'algorithm': 'PPO',             # 'PPO' or 'A2C'
