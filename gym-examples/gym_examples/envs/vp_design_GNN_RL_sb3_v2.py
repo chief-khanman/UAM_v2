@@ -569,10 +569,10 @@ class VertiportDesignEnv(gym.Env):
         }
 
         if terminated or truncated: 
-            print('Best vertiports are: (616328 3356411), (624328 3356411) (616328 3348411) (624328 3348411)')
+            print('Best vertiports are: (631282.60 3355349) OR (631282.60 3349471) \n (621872 3362655) \n(610327 3352410) \n(620327 3337410)')
             print('\n')
             print(f'Final selected vertiports are: {self.current_selected_vertiports}')
-            time.sleep(0.2)
+            #time.sleep(0.2)
         
         return observation, reward, terminated, truncated, info
 
